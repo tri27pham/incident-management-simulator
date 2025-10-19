@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: backend
+    depends_on:
+      - postgres
+      - ai-diagnosis
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      AI_DIAGNOSIS_URL: http://ai-diagnosis:8000
+    ports:
+      - "8080:8080"
+    networks:
+      - incident-net
+
+  ai-diagnosis:
+    build: ./ai-diagnosis
+    container_name: ai-diagnosis
+    ports:
+      - "8000:8000"
+    networks:
+      - incident-net
+
+  incident-generator:
+    build: ./incident-generator
+    container_name: incident-generator
+    depends_on:
+      - backend
+    networks:
+      - incident-net
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"   # host:container
+    networks:
+      - incident-net
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - incident-net
+
+volumes:
+  pg_data:
+
+networks:
+  incident-net:

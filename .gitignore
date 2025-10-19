@@ -1,0 +1,14 @@
+# Node & Python caches
+node_modules/
+__pycache__/
+*.pyc
+
+# Go build outputs
+/bin
+/vendor
+
+# Environment & build artifacts
+.env
+.env.*
+/dist
+/build
