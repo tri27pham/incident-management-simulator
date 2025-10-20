@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/joho/godotenv"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
@@ -19,6 +20,12 @@ func main() {
 	db.DB.AutoMigrate(&models.Incident{})
 
 	r := router.SetupRouter()
-	log.Println("🚀 Backend running on http://localhost:8080")
-	r.Run(":8080")
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("🚀 Backend running on http://localhost:%s", port)
+	r.Run(":" + port)
 }

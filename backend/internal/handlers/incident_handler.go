@@ -48,3 +48,50 @@ func GetIncidentByIDHandler(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, incident)
 }
+
+func UpdateIncidentHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid incident ID format"})
+		return
+	}
+
+	var updateData struct {
+		Status string `json:"status" binding:"required,oneof=triage investigating fixing resolved"`
+	}
+	if err := c.ShouldBindJSON(&updateData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	incident, err := services.UpdateIncidentStatus(id, updateData.Status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update incident"})
+		return
+	}
+
+	c.JSON(http.StatusOK, incident)
+}
+
+func RunAIDiagnosisHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid incident ID format"})
+		return
+	}
+
+	analysis, err := services.RunAIDiagnosis(id)
+	if err != nil {
+		// Differentiate between "not found" and other server errors
+		if err.Error() == "incident not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, analysis)
+}

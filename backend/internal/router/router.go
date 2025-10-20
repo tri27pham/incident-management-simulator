@@ -16,6 +16,8 @@ func SetupRouter() *gin.Engine {
 		api.GET("/incidents", handlers.GetAllIncidentsHandler)
 		api.POST("/incidents", handlers.CreateIncidentHandler)
 		api.GET("/incidents/:id", handlers.GetIncidentByIDHandler)
+		api.PATCH("/incidents/:id", handlers.UpdateIncidentHandler)
+		api.POST("/incidents/:id/diagnose", handlers.RunAIDiagnosisHandler)
 	}
 
 	return r
