@@ -17,7 +17,7 @@ func main() {
 	}
 
 	db.ConnectDatabase()
-	db.DB.AutoMigrate(&models.Incident{})
+	db.DB.AutoMigrate(&models.Incident{}, &models.IncidentAnalysis{})
 
 	r := router.SetupRouter()
 

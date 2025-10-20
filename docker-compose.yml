@@ -21,6 +21,8 @@ services:
   ai-diagnosis:
     build: ./ai-diagnosis
     container_name: ai-diagnosis
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     networks:

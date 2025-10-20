@@ -74,7 +74,7 @@ func UpdateIncidentHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, incident)
 }
 
-func RunAIDiagnosisHandler(c *gin.Context) {
+func TriggerAIDiagnosisHandler(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -82,14 +82,26 @@ func RunAIDiagnosisHandler(c *gin.Context) {
 		return
 	}
 
-	analysis, err := services.RunAIDiagnosis(id)
+	analysis, err := services.TriggerAIDiagnosis(id)
 	if err != nil {
-		// Differentiate between "not found" and other server errors
-		if err.Error() == "incident not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, analysis)
+}
+
+func TriggerAISuggestedFixHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid incident ID format"})
+		return
+	}
+
+	analysis, err := services.TriggerAISuggestedFix(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
