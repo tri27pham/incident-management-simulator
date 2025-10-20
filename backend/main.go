@@ -1,19 +1,21 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
+	"log"
+
+	"github.com/joho/godotenv"
+	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
+	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
+	"github.com/tri27pham/incident-management-simulator/backend/internal/router"
 )
 
 func main() {
-	fmt.Println("✅ Backend service started on port 8080")
+	_ = godotenv.Load(".env")
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
-	})
+	db.ConnectDatabase()
+	db.DB.AutoMigrate(&models.Incident{})
 
-	// Keeps container running and responds to pings
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		panic(err)
-	}
+	r := router.SetupRouter()
+	log.Println("🚀 Backend running on http://localhost:8080")
+	r.Run(":8080")
 }
