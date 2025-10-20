@@ -10,7 +10,10 @@ import (
 )
 
 func main() {
-	_ = godotenv.Load(".env")
+	err := godotenv.Load("../.env")
+	if err != nil {
+		log.Println("Note: .env file not found, relying on environment variables")
+	}
 
 	db.ConnectDatabase()
 	db.DB.AutoMigrate(&models.Incident{})

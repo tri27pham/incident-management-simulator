@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/services"
 )
@@ -34,8 +34,14 @@ func GetAllIncidentsHandler(c *gin.Context) {
 }
 
 func GetIncidentByIDHandler(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	incident, err := services.GetIncidentByID(uint(id))
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid incident ID format"})
+		return
+	}
+
+	incident, err := services.GetIncidentByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Incident not found"})
 		return
