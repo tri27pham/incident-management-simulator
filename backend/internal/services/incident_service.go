@@ -133,9 +133,10 @@ func TriggerAIDiagnosis(incidentID uuid.UUID) (models.IncidentAnalysis, error) {
 		return analysis, fmt.Errorf("failed to save incident analysis: %w", err)
 	}
 
-	// 4. Update the original incident's status.
-	incident.Status = "investigating"
-	db.DB.Save(&incident)
+	// 4. Keep incident in current status - users will manually move it
+	// Note: Status is only changed by drag-and-drop in the UI
+	// incident.Status = "investigating"
+	// db.DB.Save(&incident)
 
 	return analysis, nil
 }

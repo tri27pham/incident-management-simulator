@@ -1,6 +1,8 @@
 import { Draggable } from 'react-beautiful-dnd';
 import { Incident } from '../types';
 import { SeverityBars } from './SeverityBars';
+import { useState, useEffect, useRef } from 'react';
+import { triggerDiagnosis } from '../services/api';
 
 interface IncidentCardProps {
   item: Incident;
@@ -8,13 +10,17 @@ interface IncidentCardProps {
   isExpanded: boolean;
   onToggleExpand: (id: string) => void;
   onOpenModal: (incident: Incident) => void;
+  onDiagnosisUpdate: (id: string, diagnosis: string) => void;
 }
 
-export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenModal }: IncidentCardProps) {
+export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenModal, onDiagnosisUpdate }: IncidentCardProps) {
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnosisError, setDiagnosisError] = useState(false);
+  const [isWaitingForAutoDiagnosis, setIsWaitingForAutoDiagnosis] = useState(!item.hasDiagnosis);
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't trigger if clicking the modal button or while dragging
-    if ((e.target as HTMLElement).closest('.modal-trigger')) {
+    if ((e.target as HTMLElement).closest('.modal-trigger') || (e.target as HTMLElement).closest('.diagnosis-button')) {
       return;
     }
     onToggleExpand(item.id);
@@ -23,6 +29,52 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
   const handleModalOpen = (e: React.MouseEvent) => {
     e.stopPropagation();
     onOpenModal(item);
+  };
+
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Set up timeout for auto-diagnosis
+  useEffect(() => {
+    if (!item.hasDiagnosis && isWaitingForAutoDiagnosis) {
+      // Wait 10 seconds for diagnosis to arrive via WebSocket
+      timeoutRef.current = setTimeout(() => {
+        setIsWaitingForAutoDiagnosis(false);
+      }, 10000); // 10 second timeout
+    } else if (item.hasDiagnosis) {
+      // Diagnosis arrived, clear timeout
+      setIsWaitingForAutoDiagnosis(false);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    }
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [item.hasDiagnosis, item.id, isWaitingForAutoDiagnosis]);
+
+  const handleGetDiagnosis = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsDiagnosing(true);
+    setDiagnosisError(false);
+    
+    try {
+      const analysis = await triggerDiagnosis(item.id);
+      // Check if diagnosis was successful or failed
+      if (analysis.diagnosis && !analysis.diagnosis.includes('error')) {
+        onDiagnosisUpdate(item.id, analysis.diagnosis);
+      } else {
+        // Diagnosis failed, show error
+        setDiagnosisError(true);
+      }
+    } catch (error) {
+      console.error('Failed to get diagnosis:', error);
+      setDiagnosisError(true);
+    } finally {
+      setIsDiagnosing(false);
+    }
   };
 
   return (
@@ -76,6 +128,62 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                   Assigned to: <span className="font-medium text-gray-700">{item.assignee}</span>
                 </p>
               )}
+              
+              {/* AI Diagnosis Section */}
+              {/* Show loading state while waiting for auto-diagnosis */}
+              {!item.hasDiagnosis && isWaitingForAutoDiagnosis && !isDiagnosing && (
+                <div className="w-full mt-2 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-medium rounded-md flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Waiting for diagnosis...
+                </div>
+              )}
+              
+              {/* Show button after timeout or if manual retry needed */}
+              {!item.hasDiagnosis && !isWaitingForAutoDiagnosis && !isDiagnosing && (
+                <button
+                  onClick={handleGetDiagnosis}
+                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Get AI Diagnosis
+                </button>
+              )}
+              
+              {/* Show spinner when user manually triggers diagnosis */}
+              {isDiagnosing && (
+                <div className="w-full mt-2 px-3 py-2 bg-gray-100 text-gray-600 text-xs font-medium rounded-md flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Analyzing...
+                </div>
+              )}
+              
+              {item.hasDiagnosis && item.diagnosis && (
+                <div className="w-full mt-2 px-3 py-2 bg-green-50 border border-green-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-green-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-green-800 mb-1">AI Diagnosis</p>
+                      <p className="text-xs text-green-700">{item.diagnosis}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {diagnosisError && !isDiagnosing && (
+                <div className="w-full mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-xs text-red-600">Failed to get diagnosis. Please try again.</p>
+                </div>
+              )}
             </div>
           )}
           
@@ -117,7 +225,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                   className="w-6 h-6 rounded-full"
                 />
               ) : (
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-purple-500"></div>
+                <div className="w-6 h-6 rounded-full bg-linear-to-br from-blue-400 to-purple-500"></div>
               )}
             </div>
           </div>
