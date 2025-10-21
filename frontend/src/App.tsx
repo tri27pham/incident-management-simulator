@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { DragDropContext, DropResult } from 'react-beautiful-dnd';
-import { IncidentBoardState, TrendMetric, Incident } from './types';
+import { IncidentBoardState, TrendMetric, Incident, IncidentSeverity } from './types';
 import { IncidentColumn } from './components/IncidentColumn';
 import { TrendCard } from './components/TrendCard';
 import { IncidentModal } from './components/IncidentModal';
+import { FilterBar } from './components/FilterBar';
 
 const trendMetrics: TrendMetric[] = [
   { label: 'Critical incidents', value: '+27%', change: 27, isPositive: true },
@@ -144,6 +145,8 @@ function App() {
   const [board, setBoard] = useState(initialBoardState);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [modalIncident, setModalIncident] = useState<Incident | null>(null);
+  const [selectedSeverities, setSelectedSeverities] = useState<IncidentSeverity[]>([]);
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
 
   const handleToggleExpand = (id: string) => {
     setExpandedCardId(expandedCardId === id ? null : id);
@@ -157,7 +160,59 @@ function App() {
     setModalIncident(null);
   };
 
-  const totalIncidents = Object.values(board).reduce((sum, col) => sum + col.items.length, 0);
+  const handleSeverityToggle = (severity: IncidentSeverity) => {
+    setSelectedSeverities((prev) =>
+      prev.includes(severity) ? prev.filter((s) => s !== severity) : [...prev, severity]
+    );
+  };
+
+  const handleTeamToggle = (team: string) => {
+    setSelectedTeams((prev) =>
+      prev.includes(team) ? prev.filter((t) => t !== team) : [...prev, team]
+    );
+  };
+
+  const handleClearFilters = () => {
+    setSelectedSeverities([]);
+    setSelectedTeams([]);
+  };
+
+  // Get all unique teams
+  const availableTeams = useMemo(() => {
+    const teams = new Set<string>();
+    Object.values(initialBoardState).forEach((column) => {
+      column.items.forEach((item) => teams.add(item.team));
+    });
+    return Array.from(teams).sort();
+  }, []);
+
+  // Filter incidents based on selected filters
+  const filteredBoard = useMemo(() => {
+    const hasFilters = selectedSeverities.length > 0 || selectedTeams.length > 0;
+    if (!hasFilters) return board;
+
+    const filtered: IncidentBoardState = {
+      Triage: { ...board.Triage, items: [] },
+      Investigating: { ...board.Investigating, items: [] },
+      Fixing: { ...board.Fixing, items: [] },
+    };
+
+    Object.entries(board).forEach(([columnId, column]) => {
+      const filteredItems = column.items.filter((item) => {
+        const severityMatch =
+          selectedSeverities.length === 0 ||
+          (item.severity && selectedSeverities.includes(item.severity)) ||
+          (!item.severity && selectedSeverities.includes('minor'));
+        const teamMatch = selectedTeams.length === 0 || selectedTeams.includes(item.team);
+        return severityMatch && teamMatch;
+      });
+      filtered[columnId as keyof IncidentBoardState].items = filteredItems;
+    });
+
+    return filtered;
+  }, [board, selectedSeverities, selectedTeams]);
+
+  const totalIncidents = Object.values(filteredBoard).reduce((sum, col) => sum + col.items.length, 0);
 
   const onDragEnd = (result: DropResult) => {
     const { source, destination } = result;
@@ -226,15 +281,25 @@ function App() {
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-gray-900">Active incidents</h2>
               <span className="text-sm text-gray-500 font-medium">
-                {Object.values(board).reduce((sum, col) => sum + col.items.length, 0)}
+                {totalIncidents}
               </span>
             </div>
             <button className="text-sm text-gray-600 hover:text-gray-900">View all</button>
           </div>
+
+          {/* Filters */}
+          <FilterBar
+            selectedSeverities={selectedSeverities}
+            selectedTeams={selectedTeams}
+            availableTeams={availableTeams}
+            onSeverityToggle={handleSeverityToggle}
+            onTeamToggle={handleTeamToggle}
+            onClearFilters={handleClearFilters}
+          />
           
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="grid grid-cols-3 gap-4">
-              {Object.entries(board).map(([columnId, column]) => (
+              {Object.entries(filteredBoard).map(([columnId, column]) => (
                 <IncidentColumn 
                   key={columnId} 
                   columnId={columnId} 
