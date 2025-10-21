@@ -1,4 +1,4 @@
-version: "3.9"
+# version: "3.9"
 
 services:
   backend:
@@ -9,6 +9,7 @@ services:
       - ai-diagnosis
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: ${POSTGRES_PORT}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -21,6 +22,8 @@ services:
   ai-diagnosis:
     build: ./ai-diagnosis
     container_name: ai-diagnosis
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     networks:
@@ -29,10 +32,14 @@ services:
   incident-generator:
     build: ./incident-generator
     container_name: incident-generator
-    depends_on:
-      - backend
+    env_file:
+      - .env
+    environment:
+      - BACKEND_URL=http://backend:8080
     networks:
       - incident-net
+    depends_on:
+      - backend
 
   frontend:
     build: ./frontend
@@ -45,19 +52,22 @@ services:
       - incident-net
 
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+    restart: unless-stopped
+    env_file: 
+      - .env
+    ports:
+      - "5432:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
     networks:
       - incident-net
 
 volumes:
-  pg_data:
+  postgres_data:
 
 networks:
   incident-net:
+    driver: bridge
