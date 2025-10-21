@@ -5,13 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 
 	"github.com/google/uuid"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
+	wshub "github.com/tri27pham/incident-management-simulator/backend/internal/websocket"
 )
+
+// FullIncidentDetails is a temporary struct to combine incident and its analysis for broadcasting
+type FullIncidentDetails struct {
+	models.Incident
+	Analysis *models.IncidentAnalysis `json:"analysis,omitempty"`
+}
 
 func CreateIncident(incident *models.Incident) error {
 	return db.DB.Create(incident).Error
@@ -19,7 +27,7 @@ func CreateIncident(incident *models.Incident) error {
 
 func GetAllIncidents() ([]models.Incident, error) {
 	var incidents []models.Incident
-	err := db.DB.Find(&incidents).Error
+	err := db.DB.Preload("Analysis").Find(&incidents).Error
 	return incidents, err
 }
 
@@ -41,6 +49,47 @@ func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) 
 	}
 
 	return incident, nil
+}
+
+// RunFullAnalysisPipeline performs the complete AI analysis and broadcasts updates.
+func RunFullAnalysisPipeline(incident models.Incident) {
+	// Step 1: Immediately broadcast the newly created incident
+	detailsNew := FullIncidentDetails{Incident: incident}
+	wshub.WSHub.Broadcast <- detailsNew
+	log.Printf("Broadcasted new incident %s", incident.ID)
+
+	// Step 2: Trigger Diagnosis
+	log.Printf("Starting analysis pipeline for incident %s", incident.ID)
+	analysis, err := TriggerAIDiagnosis(incident.ID)
+	if err != nil {
+		log.Printf("Error in AI diagnosis for incident %s: %v", incident.ID, err)
+		return // End the pipeline if diagnosis fails
+	}
+
+	// Step 3: Broadcast Diagnosis Update
+	incidentWithStatus, _ := GetIncidentByID(incident.ID) // Refetch incident to get latest status
+	detailsWithDiagnosis := FullIncidentDetails{
+		Incident: incidentWithStatus,
+		Analysis: &analysis,
+	}
+	wshub.WSHub.Broadcast <- detailsWithDiagnosis
+	log.Printf("Broadcasted diagnosis update for incident %s", incident.ID)
+
+	// Step 4: Trigger Suggested Fix
+	finalAnalysis, err := TriggerAISuggestedFix(incident.ID)
+	if err != nil {
+		log.Printf("Error in AI suggested fix for incident %s: %v", incident.ID, err)
+		return // End the pipeline if fix suggestion fails
+	}
+
+	// Step 5: Broadcast Final Update
+	incidentWithFix, _ := GetIncidentByID(incident.ID) // Refetch again for completeness
+	detailsWithFix := FullIncidentDetails{
+		Incident: incidentWithFix,
+		Analysis: &finalAnalysis,
+	}
+	wshub.WSHub.Broadcast <- detailsWithFix
+	log.Printf("Finished analysis pipeline and broadcasted final update for incident %s", incident.ID)
 }
 
 // aiDiagnosisResponse defines the expected JSON structure from the AI service.
@@ -75,7 +124,9 @@ func TriggerAIDiagnosis(incidentID uuid.UUID) (models.IncidentAnalysis, error) {
 	}
 
 	// 3. Create or find the analysis record and update it.
-	db.DB.FirstOrCreate(&analysis, models.IncidentAnalysis{IncidentID: incident.ID})
+	// Use FirstOrInit to find the record or initialize a new one in memory.
+	db.DB.Where(models.IncidentAnalysis{IncidentID: incident.ID}).FirstOrInit(&analysis)
+
 	analysis.Diagnosis = diagResp.Diagnosis
 	analysis.Severity = diagResp.Severity
 	if err := db.DB.Save(&analysis).Error; err != nil {

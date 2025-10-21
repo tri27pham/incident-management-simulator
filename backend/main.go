@@ -8,6 +8,7 @@ import (
 	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/router"
+	"github.com/tri27pham/incident-management-simulator/backend/internal/websocket"
 )
 
 func main() {
@@ -18,6 +19,9 @@ func main() {
 
 	db.ConnectDatabase()
 	db.DB.AutoMigrate(&models.Incident{}, &models.IncidentAnalysis{})
+
+	// Start the WebSocket hub in a separate goroutine
+	go websocket.WSHub.Run()
 
 	r := router.SetupRouter()
 

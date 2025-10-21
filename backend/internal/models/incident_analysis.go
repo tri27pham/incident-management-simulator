@@ -15,3 +15,8 @@ type IncidentAnalysis struct {
 	Confidence float64   `json:"confidence"`
 	CreatedAt  time.Time `json:"created_at"`
 }
+
+// TableName explicitly tells GORM the name of the table to use for the IncidentAnalysis struct.
+func (IncidentAnalysis) TableName() string {
+	return "incident_analysis"
+}

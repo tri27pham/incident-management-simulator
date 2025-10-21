@@ -1,27 +1,65 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/services"
+	wshub "github.com/tri27pham/incident-management-simulator/backend/internal/websocket"
 )
 
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		// Allow all connections by default.
+		// For production, you'd want to check the origin.
+		return true
+	},
+}
+
+// WebSocketHandler handles upgrading the HTTP connection to a WebSocket connection.
+func WebSocketHandler(c *gin.Context) {
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Println("Failed to upgrade connection:", err)
+		return
+	}
+
+	// Register the new client
+	wshub.WSHub.Register <- conn
+
+	// Note: We are not handling reading messages from the client in this implementation,
+	// as the primary flow is server-to-client updates.
+}
+
+// FullIncidentDetails is a temporary struct to combine incident and its analysis for broadcasting
+type FullIncidentDetails struct {
+	models.Incident
+	Analysis *models.IncidentAnalysis `json:"analysis,omitempty"`
+}
+
 func CreateIncidentHandler(c *gin.Context) {
-	var input models.Incident
-	if err := c.ShouldBindJSON(&input); err != nil {
+	var incident models.Incident
+	if err := c.ShouldBindJSON(&incident); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := services.CreateIncident(&input); err != nil {
+	if err := services.CreateIncident(&incident); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create incident"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"id": input.ID, "created_at": input.CreatedAt})
+	// Start the AI analysis pipeline in the background.
+	// This pipeline is now responsible for all WebSocket broadcasts.
+	go services.RunFullAnalysisPipeline(incident)
+
+	c.JSON(http.StatusCreated, incident)
 }
 
 func GetAllIncidentsHandler(c *gin.Context) {

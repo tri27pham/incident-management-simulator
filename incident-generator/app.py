@@ -74,7 +74,7 @@ def main():
             report_incident(incident)
         
         # Wait for a random interval before generating the next incident
-        sleep_duration = random.randint(120, 300) # 2 to 5 minutes
+        sleep_duration = random.randint(15, 45)
         print(f"🕒 Waiting for {sleep_duration} seconds...")
         time.sleep(sleep_duration)
 
