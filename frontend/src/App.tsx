@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { DragDropContext, DropResult } from 'react-beautiful-dnd';
-import { IncidentBoardState, TrendMetric } from './types';
+import { IncidentBoardState, TrendMetric, Incident } from './types';
 import { IncidentColumn } from './components/IncidentColumn';
 import { TrendCard } from './components/TrendCard';
+import { IncidentModal } from './components/IncidentModal';
 
 const trendMetrics: TrendMetric[] = [
   { label: 'Critical incidents', value: '+27%', change: 27, isPositive: true },
@@ -21,6 +22,12 @@ const initialBoardState: IncidentBoardState = {
         timeElapsed: '7h 7m',
         severity: 'critical',
         team: 'Production',
+        description: 'Summary notifications are failing to send when message length exceeds the maximum character limit. This affects automated incident summaries.',
+        impact: 'Users are not receiving timely incident updates. Approximately 15% of summary messages affected.',
+        affectedServices: ['Notification Service', 'Slack Integration', 'Email Service'],
+        assignee: 'Sarah Chen',
+        createdAt: 'Oct 21, 2025 10:30 AM',
+        lastUpdate: '2 hours ago',
       },
       {
         id: '2',
@@ -29,6 +36,12 @@ const initialBoardState: IncidentBoardState = {
         timeElapsed: '12h 54m',
         severity: 'low',
         team: 'Production',
+        description: 'The schedule drawer is rendering at full width causing it to overlap with the main navigation sidebar on certain screen resolutions.',
+        impact: 'Minor UI issue affecting user experience on specific screen sizes (1024px-1280px width).',
+        affectedServices: ['Frontend UI', 'Schedule Manager'],
+        assignee: 'Mike Rodriguez',
+        createdAt: 'Oct 20, 2025 9:15 PM',
+        lastUpdate: '3 hours ago',
       },
     ],
   },
@@ -42,6 +55,12 @@ const initialBoardState: IncidentBoardState = {
         timeElapsed: '1h10m',
         severity: 'high',
         team: 'Data',
+        description: 'A customer configuration is missing the required slack_team_id field, preventing announcement posts from being delivered to their Slack workspace.',
+        impact: 'One major customer unable to receive incident announcements via Slack. Affecting their incident response workflow.',
+        affectedServices: ['Slack Integration', 'Customer Config Service', 'Announcement API'],
+        assignee: 'Alex Kim',
+        createdAt: 'Oct 21, 2025 4:20 PM',
+        lastUpdate: '15 minutes ago',
       },
       {
         id: '4',
@@ -50,6 +69,12 @@ const initialBoardState: IncidentBoardState = {
         timeElapsed: '9d 3h',
         severity: 'critical',
         team: 'Production',
+        description: 'Production environment is generating excessive alerts about executor capacity limits. Alert threshold may need adjustment or underlying capacity issue needs investigation.',
+        impact: 'Alert fatigue causing important notifications to be missed. Potential performance degradation if capacity is actually constrained.',
+        affectedServices: ['Job Executor', 'Monitoring System', 'Alert Manager'],
+        assignee: 'Jordan Taylor',
+        createdAt: 'Oct 12, 2025 1:45 PM',
+        lastUpdate: '1 day ago',
       },
       {
         id: '5',
@@ -58,6 +83,12 @@ const initialBoardState: IncidentBoardState = {
         timeElapsed: '1h10m',
         severity: 'minor',
         team: 'Production',
+        description: 'Dashboard insights showing incorrect metrics for three specific customer accounts. Data aggregation query may have a bug.',
+        impact: 'Three customers seeing inaccurate analytics data. Does not affect core functionality.',
+        affectedServices: ['Analytics Service', 'Dashboard API'],
+        assignee: 'Emma Watson',
+        createdAt: 'Oct 21, 2025 4:20 PM',
+        lastUpdate: '30 minutes ago',
       },
     ],
   },
@@ -71,6 +102,12 @@ const initialBoardState: IncidentBoardState = {
         timeElapsed: '46m',
         severity: 'high',
         team: 'Production',
+        description: 'User authentication service experiencing elevated error rates (15% of requests). Appears to be related to database connection pooling issues.',
+        impact: 'Users experiencing intermittent login failures and session timeouts. Estimated 500+ users affected.',
+        affectedServices: ['Auth Service', 'Database Pool', 'Session Manager'],
+        assignee: 'Chris Anderson',
+        createdAt: 'Oct 21, 2025 4:44 PM',
+        lastUpdate: '10 minutes ago',
       },
       {
         id: '7',
@@ -79,6 +116,12 @@ const initialBoardState: IncidentBoardState = {
         timeElapsed: '10h 39m',
         severity: 'critical',
         team: 'Data',
+        description: 'Jira integration failing for multiple customers due to OAuth permission scope changes. Autoexport feature completely non-functional.',
+        impact: 'Critical workflow blocker for customers using Jira integration. 28 customers affected.',
+        affectedServices: ['Jira Integration', 'OAuth Service', 'Export API'],
+        assignee: 'Taylor Morgan',
+        createdAt: 'Oct 21, 2025 6:51 AM',
+        lastUpdate: '1 hour ago',
       },
       {
         id: '8',
@@ -87,6 +130,12 @@ const initialBoardState: IncidentBoardState = {
         timeElapsed: '2d 3h',
         severity: 'minor',
         team: 'Production',
+        description: 'Four specific incidents have malformed merged update records causing the updates tab to fail rendering. Data migration script may have introduced corrupt data.',
+        impact: 'Four incidents cannot display their update history. Does not affect incident management functionality.',
+        affectedServices: ['Updates Service', 'Frontend UI'],
+        assignee: 'Sam Patel',
+        createdAt: 'Oct 19, 2025 1:30 PM',
+        lastUpdate: '8 hours ago',
       },
     ],
   },
@@ -95,6 +144,20 @@ const initialBoardState: IncidentBoardState = {
 
 function App() {
   const [board, setBoard] = useState(initialBoardState);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const [modalIncident, setModalIncident] = useState<Incident | null>(null);
+
+  const handleToggleExpand = (id: string) => {
+    setExpandedCardId(expandedCardId === id ? null : id);
+  };
+
+  const handleOpenModal = (incident: Incident) => {
+    setModalIncident(incident);
+  };
+
+  const handleCloseModal = () => {
+    setModalIncident(null);
+  };
 
   const onDragEnd = (result: DropResult) => {
     const { source, destination } = result;
@@ -172,12 +235,24 @@ function App() {
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="grid grid-cols-3 gap-4">
               {Object.entries(board).map(([columnId, column]) => (
-                <IncidentColumn key={columnId} columnId={columnId} column={column} />
+                <IncidentColumn 
+                  key={columnId} 
+                  columnId={columnId} 
+                  column={column}
+                  expandedCardId={expandedCardId}
+                  onToggleExpand={handleToggleExpand}
+                  onOpenModal={handleOpenModal}
+                />
               ))}
             </div>
           </DragDropContext>
         </section>
       </main>
+
+      {/* Modal */}
+      {modalIncident && (
+        <IncidentModal incident={modalIncident} onClose={handleCloseModal} />
+      )}
     </div>
   );
 }

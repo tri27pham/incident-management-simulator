@@ -10,6 +10,12 @@ export interface Incident {
   severity?: IncidentSeverity;
   team: string;
   avatarUrl?: string;
+  description?: string;
+  impact?: string;
+  affectedServices?: string[];
+  assignee?: string;
+  createdAt?: string;
+  lastUpdate?: string;
 }
 
 export type IncidentBoardState = {

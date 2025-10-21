@@ -8,6 +8,9 @@ interface IncidentColumnProps {
     name: string;
     items: Incident[];
   };
+  expandedCardId: string | null;
+  onToggleExpand: (id: string) => void;
+  onOpenModal: (incident: Incident) => void;
 }
 
 const statusColors = {
@@ -22,7 +25,7 @@ const statusIcons = {
   Fixing: '🔴',
 };
 
-export function IncidentColumn({ columnId, column }: IncidentColumnProps) {
+export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpand, onOpenModal }: IncidentColumnProps) {
   const colorClass = statusColors[column.name as keyof typeof statusColors] || 'text-gray-600';
   const icon = statusIcons[column.name as keyof typeof statusIcons] || '•';
 
@@ -47,7 +50,14 @@ export function IncidentColumn({ columnId, column }: IncidentColumnProps) {
             }`}
           >
             {column.items.map((item, index) => (
-              <IncidentCard key={item.id} item={item} index={index} />
+              <IncidentCard 
+                key={item.id} 
+                item={item} 
+                index={index}
+                isExpanded={expandedCardId === item.id}
+                onToggleExpand={onToggleExpand}
+                onOpenModal={onOpenModal}
+              />
             ))}
             {provided.placeholder}
           </div>
