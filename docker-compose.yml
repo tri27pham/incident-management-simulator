@@ -9,6 +9,7 @@ services:
       - ai-diagnosis
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: ${POSTGRES_PORT}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -31,10 +32,14 @@ services:
   incident-generator:
     build: ./incident-generator
     container_name: incident-generator
-    depends_on:
-      - backend
+    env_file:
+      - .env
+    environment:
+      - BACKEND_URL=http://backend:8080
     networks:
       - incident-net
+    depends_on:
+      - backend
 
   frontend:
     build: ./frontend
