@@ -1,0 +1,3 @@
+-- This script is run after the database and user are created.
+-- You can add commands here to set up extensions, schemas, etc.
+-- For example: CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
