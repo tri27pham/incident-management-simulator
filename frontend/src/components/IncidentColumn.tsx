@@ -1,6 +1,7 @@
 import { Droppable } from 'react-beautiful-dnd';
 import { Incident } from '../types';
 import { IncidentCard } from './IncidentCard';
+import { CircularProgress } from './CircularProgress';
 
 interface IncidentColumnProps {
   columnId: string;
@@ -11,32 +12,34 @@ interface IncidentColumnProps {
   expandedCardId: string | null;
   onToggleExpand: (id: string) => void;
   onOpenModal: (incident: Incident) => void;
+  totalIncidents: number;
 }
 
 const statusColors = {
-  Triage: 'text-blue-600',
-  Investigating: 'text-orange-600',
-  Fixing: 'text-red-600',
+  Triage: 'text-gray-900',
+  Investigating: 'text-gray-900',
+  Fixing: 'text-gray-900',
 };
 
-const statusIcons = {
-  Triage: '🔵',
-  Investigating: '🔄',
-  Fixing: '🔴',
+const statusProgressColors = {
+  Triage: 'text-blue-500',
+  Investigating: 'text-orange-500',
+  Fixing: 'text-red-500',
 };
 
-export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpand, onOpenModal }: IncidentColumnProps) {
+export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpand, onOpenModal, totalIncidents }: IncidentColumnProps) {
   const colorClass = statusColors[column.name as keyof typeof statusColors] || 'text-gray-600';
-  const icon = statusIcons[column.name as keyof typeof statusIcons] || '•';
+  const progressColor = statusProgressColors[column.name as keyof typeof statusProgressColors] || 'text-gray-600';
+  const percentage = totalIncidents > 0 ? (column.items.length / totalIncidents) * 100 : 0;
 
   return (
     <div className="bg-gray-50 rounded-lg p-4">
       <div className="flex items-center gap-2 mb-4">
-        <span>{icon}</span>
-        <h2 className={`font-semibold text-base ${colorClass}`}>
+        <CircularProgress percentage={percentage} color={progressColor} size={20} />
+        <h2 className={`font-medium text-base ${colorClass}`}>
           {column.name}
         </h2>
-        <span className="text-sm text-gray-500 font-medium ml-auto">
+        <span className="text-base text-gray-400 font-normal">
           {column.items.length}
         </span>
       </div>

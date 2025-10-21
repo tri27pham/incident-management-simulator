@@ -20,7 +20,7 @@ const initialBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6740',
         title: 'Summary update message failed to deliver because it was too long',
         timeElapsed: '7h 7m',
-        severity: 'critical',
+        severity: 'high',
         team: 'Production',
         description: 'Summary notifications are failing to send when message length exceeds the maximum character limit. This affects automated incident summaries.',
         impact: 'Users are not receiving timely incident updates. Approximately 15% of summary messages affected.',
@@ -53,7 +53,7 @@ const initialBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6222',
         title: "Customer does not have slack_team_id set so announcement posts won't send",
         timeElapsed: '1h10m',
-        severity: 'high',
+        severity: 'medium',
         team: 'Data',
         description: 'A customer configuration is missing the required slack_team_id field, preventing announcement posts from being delivered to their Slack workspace.',
         impact: 'One major customer unable to receive incident announcements via Slack. Affecting their incident response workflow.',
@@ -67,7 +67,7 @@ const initialBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6739',
         title: 'Noisy alert regarding executor capacity on production',
         timeElapsed: '9d 3h',
-        severity: 'critical',
+        severity: 'high',
         team: 'Production',
         description: 'Production environment is generating excessive alerts about executor capacity limits. Alert threshold may need adjustment or underlying capacity issue needs investigation.',
         impact: 'Alert fatigue causing important notifications to be missed. Potential performance degradation if capacity is actually constrained.',
@@ -81,7 +81,6 @@ const initialBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6735',
         title: 'At A Glance insights incorrect for 3 customers',
         timeElapsed: '1h10m',
-        severity: 'minor',
         team: 'Production',
         description: 'Dashboard insights showing incorrect metrics for three specific customer accounts. Data aggregation query may have a bug.',
         impact: 'Three customers seeing inaccurate analytics data. Does not affect core functionality.',
@@ -100,7 +99,7 @@ const initialBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6711',
         title: 'User service high error rate',
         timeElapsed: '46m',
-        severity: 'high',
+        severity: 'medium',
         team: 'Production',
         description: 'User authentication service experiencing elevated error rates (15% of requests). Appears to be related to database connection pooling issues.',
         impact: 'Users experiencing intermittent login failures and session timeouts. Estimated 500+ users affected.',
@@ -114,7 +113,7 @@ const initialBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6734',
         title: 'Customers report being unable to autoexport to Jira due to permission issue',
         timeElapsed: '10h 39m',
-        severity: 'critical',
+        severity: 'high',
         team: 'Data',
         description: 'Jira integration failing for multiple customers due to OAuth permission scope changes. Autoexport feature completely non-functional.',
         impact: 'Critical workflow blocker for customers using Jira integration. 28 customers affected.',
@@ -128,7 +127,6 @@ const initialBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6720',
         title: "Unable to display updates tab for four incidents with wonky 'merged' updates",
         timeElapsed: '2d 3h',
-        severity: 'minor',
         team: 'Production',
         description: 'Four specific incidents have malformed merged update records causing the updates tab to fail rendering. Data migration script may have introduced corrupt data.',
         impact: 'Four incidents cannot display their update history. Does not affect incident management functionality.',
@@ -158,6 +156,8 @@ function App() {
   const handleCloseModal = () => {
     setModalIncident(null);
   };
+
+  const totalIncidents = Object.values(board).reduce((sum, col) => sum + col.items.length, 0);
 
   const onDragEnd = (result: DropResult) => {
     const { source, destination } = result;
@@ -242,6 +242,7 @@ function App() {
                   expandedCardId={expandedCardId}
                   onToggleExpand={handleToggleExpand}
                   onOpenModal={handleOpenModal}
+                  totalIncidents={totalIncidents}
                 />
               ))}
             </div>

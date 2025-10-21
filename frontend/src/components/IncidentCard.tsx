@@ -1,5 +1,6 @@
 import { Draggable } from 'react-beautiful-dnd';
 import { Incident } from '../types';
+import { SeverityBars } from './SeverityBars';
 
 interface IncidentCardProps {
   item: Incident;
@@ -9,16 +10,7 @@ interface IncidentCardProps {
   onOpenModal: (incident: Incident) => void;
 }
 
-const severityConfig = {
-  critical: { icon: '📊', color: 'text-red-600' },
-  high: { icon: '📊', color: 'text-orange-600' },
-  medium: { icon: '📊', color: 'text-yellow-600' },
-  low: { icon: '📊', color: 'text-blue-600' },
-  minor: { icon: '📊', color: 'text-gray-600' },
-};
-
 export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenModal }: IncidentCardProps) {
-  const severity = item.severity ? severityConfig[item.severity] : null;
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't trigger if clicking the modal button or while dragging
@@ -89,9 +81,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
           
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs">
-              {severity && (
-                <span className={severity.color}>{severity.icon}</span>
-              )}
+              <SeverityBars severity={item.severity} />
               <span className="flex items-center gap-1">
                 <span className="text-gray-400">⬢⬢</span>
                 <span className="text-gray-700 font-medium">{item.team}</span>
