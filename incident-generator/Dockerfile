@@ -1,17 +1,6 @@
-# Use an official Python runtime as a parent image
-FROM python:3.11-slim
-
-# Set the working directory in the container
+# Simple Go container for a scheduled generator
+FROM golang:1.25.3-alpine
 WORKDIR /app
-
-# Copy the requirements file into the container at /app
-COPY requirements.txt /app/
-
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application's code into the container at /app
-COPY . /app
-
-# Define the command to run your application
-CMD ["python", "app.py"]
+COPY . .
+RUN go mod tidy && go build -o generator main.go
+CMD ["./generator"]
