@@ -51,6 +51,12 @@ export function mapBackendIncidentToFrontend(
                            !analysis.diagnosis.includes('Error') &&
                            !analysis.diagnosis.startsWith('{');
   
+  // Check if solution is valid (not an error message)
+  const hasValidSolution = analysis?.solution && 
+                          !analysis.solution.includes('error') && 
+                          !analysis.solution.includes('Error') &&
+                          !analysis.solution.startsWith('{');
+  
   return {
     id: backendIncident.id,
     incidentNumber: `INC-${backendIncident.id.slice(0, 4).toUpperCase()}`,
@@ -65,7 +71,9 @@ export function mapBackendIncidentToFrontend(
     createdAt: new Date(backendIncident.created_at).toLocaleString(),
     lastUpdate: new Date(backendIncident.updated_at).toLocaleString(),
     diagnosis: hasValidDiagnosis ? analysis.diagnosis : undefined,
+    solution: hasValidSolution ? analysis.solution : undefined,
     hasDiagnosis: hasValidDiagnosis || false,
+    hasSolution: hasValidSolution || false,
   };
 }
 

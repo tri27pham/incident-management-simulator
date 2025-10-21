@@ -17,7 +17,9 @@ export interface Incident {
   createdAt?: string;
   lastUpdate?: string;
   diagnosis?: string;
+  solution?: string;
   hasDiagnosis?: boolean;
+  hasSolution?: boolean;
 }
 
 export type IncidentBoardState = {

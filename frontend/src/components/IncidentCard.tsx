@@ -16,7 +16,7 @@ interface IncidentCardProps {
 export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenModal, onDiagnosisUpdate }: IncidentCardProps) {
   const [isDiagnosing, setIsDiagnosing] = useState(false);
   const [diagnosisError, setDiagnosisError] = useState(false);
-  const [isWaitingForAutoDiagnosis, setIsWaitingForAutoDiagnosis] = useState(!item.hasDiagnosis);
+  const [isWaitingForAutoDiagnosis, setIsWaitingForAutoDiagnosis] = useState(!item.hasDiagnosis && !item.hasSolution);
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't trigger if clicking the modal button or while dragging
@@ -35,13 +35,13 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
 
   // Set up timeout for auto-diagnosis
   useEffect(() => {
-    if (!item.hasDiagnosis && isWaitingForAutoDiagnosis) {
-      // Wait 10 seconds for diagnosis to arrive via WebSocket
+    if (!item.hasDiagnosis && !item.hasSolution && isWaitingForAutoDiagnosis) {
+      // Wait 10 seconds for diagnosis/solution to arrive via WebSocket
       timeoutRef.current = setTimeout(() => {
         setIsWaitingForAutoDiagnosis(false);
       }, 10000); // 10 second timeout
-    } else if (item.hasDiagnosis) {
-      // Diagnosis arrived, clear timeout
+    } else if (item.hasDiagnosis || item.hasSolution) {
+      // Diagnosis or solution arrived, clear timeout
       setIsWaitingForAutoDiagnosis(false);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -53,7 +53,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [item.hasDiagnosis, item.id, isWaitingForAutoDiagnosis]);
+  }, [item.hasDiagnosis, item.hasSolution, item.id, isWaitingForAutoDiagnosis]);
 
   const handleGetDiagnosis = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -131,7 +131,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               
               {/* AI Diagnosis Section */}
               {/* Show loading state while waiting for auto-diagnosis */}
-              {!item.hasDiagnosis && isWaitingForAutoDiagnosis && !isDiagnosing && (
+              {!item.hasDiagnosis && !item.hasSolution && isWaitingForAutoDiagnosis && !isDiagnosing && (
                 <div className="w-full mt-2 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-medium rounded-md flex items-center justify-center gap-2">
                   <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -142,7 +142,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               )}
               
               {/* Show button after timeout or if manual retry needed */}
-              {!item.hasDiagnosis && !isWaitingForAutoDiagnosis && !isDiagnosing && (
+              {!item.hasDiagnosis && !item.hasSolution && !isWaitingForAutoDiagnosis && !isDiagnosing && (
                 <button
                   onClick={handleGetDiagnosis}
                   className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2"
@@ -174,6 +174,20 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                     <div className="flex-1">
                       <p className="text-xs font-medium text-green-800 mb-1">AI Diagnosis</p>
                       <p className="text-xs text-green-700">{item.diagnosis}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {item.hasSolution && item.solution && (
+                <div className="w-full mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-blue-800 mb-1">Suggested Solution</p>
+                      <p className="text-xs text-blue-700">{item.solution}</p>
                     </div>
                   </div>
                 </div>

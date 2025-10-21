@@ -33,13 +33,13 @@ func GetAllIncidents() ([]models.Incident, error) {
 
 func GetIncidentByID(id uuid.UUID) (models.Incident, error) {
 	var incident models.Incident
-	err := db.DB.First(&incident, id).Error
+	err := db.DB.Preload("Analysis").First(&incident, id).Error
 	return incident, err
 }
 
 func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) {
 	var incident models.Incident
-	if err := db.DB.First(&incident, id).Error; err != nil {
+	if err := db.DB.Preload("Analysis").First(&incident, id).Error; err != nil {
 		return incident, err // Incident not found
 	}
 
@@ -48,7 +48,25 @@ func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) 
 		return incident, err
 	}
 
+	// Broadcast the status update to all connected clients
+	BroadcastIncidentUpdate(id)
+	log.Printf("Broadcasted status update for incident %s to %s", incident.ID, status)
+
 	return incident, nil
+}
+
+// BroadcastIncidentUpdate fetches an incident with its analysis and broadcasts it via WebSocket
+func BroadcastIncidentUpdate(id uuid.UUID) {
+	incident, err := GetIncidentByID(id)
+	if err != nil {
+		log.Printf("Failed to fetch incident %s for broadcast: %v", id, err)
+		return
+	}
+
+	details := FullIncidentDetails{
+		Incident: incident,
+	}
+	wshub.WSHub.Broadcast <- details
 }
 
 // RunFullAnalysisPipeline performs the complete AI analysis and broadcasts updates.

@@ -126,6 +126,9 @@ func TriggerAIDiagnosisHandler(c *gin.Context) {
 		return
 	}
 
+	// Broadcast the updated incident with diagnosis to all connected clients
+	services.BroadcastIncidentUpdate(id)
+
 	c.JSON(http.StatusOK, analysis)
 }
 
