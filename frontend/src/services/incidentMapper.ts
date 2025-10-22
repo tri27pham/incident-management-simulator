@@ -149,6 +149,7 @@ export function mapBackendIncidentToFrontend(
     hasSolution: hasValidSolution,
     generated_by: backendIncident.generated_by as 'gemini' | 'groq' | 'fallback' | 'manual' | undefined,
     statusHistory,
+    timeline: statusHistory, // Also provide as timeline for resolved panel
   };
   
   console.log(`[Mapper] Final incident ${backendIncident.id.slice(0, 8)}:`, {

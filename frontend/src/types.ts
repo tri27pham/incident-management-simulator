@@ -31,6 +31,7 @@ export interface Incident {
   hasSolution?: boolean;
   generated_by?: 'gemini' | 'groq' | 'fallback' | 'manual';
   statusHistory?: StatusHistoryEntry[];
+  timeline?: StatusHistoryEntry[]; // Alias for statusHistory for resolved panel
 }
 
 export type IncidentBoardState = {

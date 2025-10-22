@@ -669,7 +669,22 @@ function App() {
             <button 
               onClick={handleGenerateIncident}
               disabled={isGenerating}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
+              style={{
+                backgroundColor: `rgb(var(--card-bg))`,
+                borderColor: `rgb(var(--border-color))`,
+                color: `rgb(var(--text-primary))`,
+              }}
+              onMouseEnter={(e) => {
+                if (!isGenerating) {
+                  e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
+                  e.currentTarget.style.borderColor = 'rgb(96, 165, 250)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
+                e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+              }}
             >
               {isGenerating ? (
                 <>
@@ -690,11 +705,20 @@ function App() {
             <button 
               onClick={handleToggleGenerator}
               disabled={isTogglingGenerator}
-              className={`${
-                generatorRunning 
-                  ? 'bg-red-600 hover:bg-red-700' 
-                  : 'bg-green-600 hover:bg-green-700'
-              } text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
+              style={{
+                backgroundColor: `rgb(var(--card-bg))`,
+                borderColor: generatorRunning ? 'rgb(239, 68, 68)' : 'rgb(74, 222, 128)',
+                color: `rgb(var(--text-primary))`,
+              }}
+              onMouseEnter={(e) => {
+                if (!isTogglingGenerator) {
+                  e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
+              }}
             >
               {isTogglingGenerator ? (
                 <>
@@ -837,9 +861,6 @@ function App() {
         isOpen={showResolvedPanel}
         onClose={() => setShowResolvedPanel(false)}
         incidents={resolvedIncidents}
-        onIncidentClick={(incident) => {
-          setModalIncident(incident);
-        }}
       />
     </div>
   );

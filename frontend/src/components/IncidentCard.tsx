@@ -162,7 +162,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
             backgroundColor: `rgb(var(--card-bg))`,
             borderColor: `rgb(var(--border-color))`,
             borderWidth: '1px',
-            boxShadow: isExpanded && !snapshot.isDragging ? '0 0 0 3px rgba(249, 115, 22, 0.15), 0 0 20px rgba(249, 115, 22, 0.1)' : undefined
+            boxShadow: isExpanded && !snapshot.isDragging ? '0 0 0 2px rgba(249, 115, 22, 0.3), 0 0 15px rgba(249, 115, 22, 0.2)' : undefined
           }}
         >
           <div onClick={handleCardClick} className="cursor-pointer">
