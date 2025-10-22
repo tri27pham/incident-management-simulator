@@ -136,7 +136,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           className={`bg-card rounded-lg shadow-sm hover:shadow-md p-4 mb-3 border-theme relative ${
-            snapshot.isDragging ? 'shadow-lg' : ''
+            snapshot.isDragging ? 'shadow-lg no-theme-transition' : ''
           } ${isExpanded && !snapshot.isDragging ? 'shadow-orange z-10' : 'z-0'}
           ${!snapshot.isDragging ? 'transition-shadow duration-300' : ''}`}
           style={{

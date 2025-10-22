@@ -13,6 +13,7 @@
   --accent-primary: 249 115 22; /* orange-600 */
   --accent-secondary: 251 146 60; /* orange-400 */
   --accent-hover: 234 88 12; /* orange-700 */
+  --button-hover-bg: 255 237 213; /* orange-100 */
   --card-bg: 255 255 255;
   --card-hover: 249 250 251;
   --card-text-primary: 17 24 39; /* gray-900 */
@@ -32,6 +33,7 @@
   --accent-primary: 249 115 22; /* orange-600 */
   --accent-secondary: 251 146 60; /* orange-400 */
   --accent-hover: 234 88 12; /* orange-700 */
+  --button-hover-bg: 55 65 81; /* gray-700 */
   --card-bg: 28 28 28; /* Dark gray for cards in dark mode #1c1c1c */
   --card-hover: 38 38 38; /* Slightly lighter on hover */
   --card-text-primary: 243 244 246; /* Light text for dark cards */
@@ -43,6 +45,16 @@
 body {
   background-color: rgb(var(--bg-primary));
   color: rgb(var(--text-primary));
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Smooth transitions for theme switching - only for colors */
+body *:not(.no-theme-transition) {
+  transition: background-color 0.3s ease, 
+              border-color 0.3s ease, 
+              color 0.3s ease,
+              fill 0.3s ease,
+              stroke 0.3s ease;
 }
 
 /* Theme-aware utility classes */
@@ -104,6 +116,10 @@ body {
 
 .text-card-tertiary {
   color: rgb(var(--card-text-tertiary));
+}
+
+.hover\:bg-theme-button-hover:hover {
+  background-color: rgb(var(--button-hover-bg));
 }
 
 /* AI Diagnosis/Solution boxes - green for diagnosis, blue for solution */

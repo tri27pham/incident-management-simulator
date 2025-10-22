@@ -605,17 +605,15 @@ function App() {
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg transition-colors flex items-center gap-2"
+              className="p-2 rounded-lg transition-all duration-200 flex items-center gap-2 hover:bg-theme-button-hover"
               style={{
                 color: `rgb(var(--text-secondary))`,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.color = `rgb(var(--accent-primary))`;
-                e.currentTarget.style.backgroundColor = theme === 'light' ? 'rgb(255 237 213)' : 'rgb(55 65 81)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.color = `rgb(var(--text-secondary))`;
-                e.currentTarget.style.backgroundColor = 'transparent';
               }}
               title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
