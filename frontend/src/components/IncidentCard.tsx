@@ -11,14 +11,15 @@ interface IncidentCardProps {
   onToggleExpand: (id: string) => void;
   onOpenModal: (incident: Incident) => void;
   onDiagnosisUpdate: (id: string, diagnosis: string) => void;
+  onSolutionUpdate: (id: string, solution: string) => void;
 }
 
-export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenModal, onDiagnosisUpdate }: IncidentCardProps) {
+export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenModal, onDiagnosisUpdate, onSolutionUpdate }: IncidentCardProps) {
   const [isDiagnosing, setIsDiagnosing] = useState(false);
-  const [diagnosisError, setDiagnosisError] = useState(false);
+  const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
   const [isWaitingForAutoDiagnosis, setIsWaitingForAutoDiagnosis] = useState(!item.hasDiagnosis && !item.hasSolution);
   const [isGettingSolution, setIsGettingSolution] = useState(false);
-  const [solutionError, setSolutionError] = useState(false);
+  const [solutionError, setSolutionError] = useState<string | null>(null);
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't trigger if clicking the modal button or while dragging
@@ -60,20 +61,33 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
   const handleGetDiagnosis = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsDiagnosing(true);
-    setDiagnosisError(false);
+    setDiagnosisError(null);
     
     try {
       const analysis = await triggerDiagnosis(item.id);
-      // Check if diagnosis was successful or failed
-      if (analysis.diagnosis && !analysis.diagnosis.includes('error')) {
+      
+      // Check if the response is an error message (not a valid diagnosis that mentions errors)
+      const isErrorMessage = 
+        analysis.diagnosis.startsWith('Failed to') ||
+        analysis.diagnosis.startsWith('Error:') ||
+        analysis.diagnosis.startsWith('Cannot') ||
+        analysis.diagnosis.includes('Unable to generate') ||
+        analysis.diagnosis.includes('AI service returned') ||
+        analysis.diagnosis.includes('Gemini API') ||
+        analysis.diagnosis.includes('Network error') ||
+        analysis.diagnosis.includes('invalid response');
+      
+      if (isErrorMessage) {
+        setDiagnosisError(analysis.diagnosis);
+      } else if (analysis.diagnosis && analysis.diagnosis.length > 10) {
         onDiagnosisUpdate(item.id, analysis.diagnosis);
       } else {
-        // Diagnosis failed, show error
-        setDiagnosisError(true);
+        setDiagnosisError('Failed to get diagnosis. Please try again.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to get diagnosis:', error);
-      setDiagnosisError(true);
+      const errorMessage = error?.message || 'Network error. Please check your connection.';
+      setDiagnosisError(errorMessage);
     } finally {
       setIsDiagnosing(false);
     }
@@ -82,14 +96,33 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
   const handleGetSolution = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsGettingSolution(true);
-    setSolutionError(false);
+    setSolutionError(null);
     
     try {
-      await triggerSuggestedFix(item.id);
-      // WebSocket will update the solution automatically
-    } catch (error) {
+      const analysis = await triggerSuggestedFix(item.id);
+      
+      // Check if the response is an error message (not a valid solution that mentions errors)
+      const isErrorMessage = 
+        analysis.solution.startsWith('Failed to') ||
+        analysis.solution.startsWith('Error:') ||
+        analysis.solution.startsWith('Cannot') ||
+        analysis.solution.includes('Unable to generate') ||
+        analysis.solution.includes('AI service returned') ||
+        analysis.solution.includes('Gemini API') ||
+        analysis.solution.includes('Network error') ||
+        analysis.solution.includes('invalid response');
+      
+      if (isErrorMessage) {
+        setSolutionError(analysis.solution);
+      } else if (analysis.solution && analysis.solution.length > 10) {
+        onSolutionUpdate(item.id, analysis.solution);
+      } else {
+        setSolutionError('Failed to get solution. Please try again.');
+      }
+    } catch (error: any) {
       console.error('Failed to get solution:', error);
-      setSolutionError(true);
+      const errorMessage = error?.message || 'Network error. Please check your connection.';
+      setSolutionError(errorMessage);
     } finally {
       setIsGettingSolution(false);
     }
@@ -108,7 +141,24 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
           } ${isExpanded ? 'ring-2 ring-blue-400' : ''}`}
         >
           <div className="flex items-start justify-between mb-2">
-            <span className="text-xs text-gray-500 font-medium">{item.incidentNumber}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 font-medium">{item.incidentNumber}</span>
+              {/* AI Provider Badge */}
+              {item.generated_by && item.generated_by !== 'manual' && (
+                <span 
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                    item.generated_by === 'gemini' 
+                      ? 'bg-purple-100 text-purple-700 border border-purple-200' 
+                      : item.generated_by === 'groq'
+                      ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                      : 'bg-gray-100 text-gray-600 border border-gray-200'
+                  }`}
+                  title={`Generated by ${item.generated_by === 'gemini' ? 'Gemini AI' : item.generated_by === 'groq' ? 'Groq AI' : 'Fallback'}`}
+                >
+                  {item.generated_by === 'gemini' ? '✨ Gemini' : item.generated_by === 'groq' ? '⚡ Groq' : '📋 Default'}
+                </span>
+              )}
+            </div>
             <span className="text-xs text-gray-400">{item.timeElapsed}</span>
           </div>
           
@@ -190,7 +240,21 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div className="flex-1">
-                      <p className="text-xs font-medium text-green-800 mb-1">AI Diagnosis</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-xs font-medium text-green-800">AI Diagnosis</p>
+                        {item.diagnosisProvider && item.diagnosisProvider !== 'unknown' && item.diagnosisProvider !== 'error' && (
+                          <span 
+                            className={`text-[9px] px-1 py-0.5 rounded font-semibold ${
+                              item.diagnosisProvider === 'gemini' 
+                                ? 'bg-purple-100 text-purple-700 border border-purple-200' 
+                                : 'bg-orange-100 text-orange-700 border border-orange-200'
+                            }`}
+                            title={`Generated by ${item.diagnosisProvider === 'gemini' ? 'Gemini AI' : 'Groq AI'}`}
+                          >
+                            {item.diagnosisProvider === 'gemini' ? '✨' : '⚡'}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-green-700">{item.diagnosis}</p>
                     </div>
                   </div>
@@ -237,13 +301,23 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               
               {diagnosisError && !isDiagnosing && (
                 <div className="w-full mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-xs text-red-600">Failed to get diagnosis. Please try again.</p>
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-red-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs text-red-600">{diagnosisError}</p>
+                  </div>
                 </div>
               )}
 
               {solutionError && !isGettingSolution && (
                 <div className="w-full mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-xs text-red-600">Failed to get solution. Please try again.</p>
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-red-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs text-red-600">{solutionError}</p>
+                  </div>
                 </div>
               )}
             </div>

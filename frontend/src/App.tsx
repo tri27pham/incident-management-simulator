@@ -167,6 +167,9 @@ function App() {
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatorRunning, setGeneratorRunning] = useState(false);
+  const [isTogglingGenerator, setIsTogglingGenerator] = useState(false);
 
   const handleToggleExpand = (id: string) => {
     setExpandedCardId(expandedCardId === id ? null : id);
@@ -197,6 +200,55 @@ function App() {
     setSelectedTeams([]);
   };
 
+  const handleGenerateIncident = async () => {
+    setIsGenerating(true);
+    try {
+      await api.generateRandomIncident();
+      // WebSocket will handle the update automatically
+      console.log('✅ Incident generated successfully');
+    } catch (error) {
+      console.error('Failed to generate incident:', error);
+      setError('Failed to generate incident');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleToggleGenerator = async () => {
+    setIsTogglingGenerator(true);
+    try {
+      if (generatorRunning) {
+        await api.stopGenerator();
+        setGeneratorRunning(false);
+        console.log('✅ Generator stopped');
+      } else {
+        await api.startGenerator();
+        setGeneratorRunning(true);
+        console.log('✅ Generator started');
+      }
+    } catch (error) {
+      console.error('Failed to toggle generator:', error);
+      setError(`Failed to ${generatorRunning ? 'stop' : 'start'} generator`);
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsTogglingGenerator(false);
+    }
+  };
+
+  // Check generator status on mount
+  useEffect(() => {
+    async function checkGeneratorStatus() {
+      try {
+        const status = await api.getGeneratorStatus();
+        setGeneratorRunning(status.is_running);
+      } catch (error) {
+        console.error('Failed to check generator status:', error);
+      }
+    }
+    checkGeneratorStatus();
+  }, []);
+
   const handleDiagnosisUpdate = (id: string, diagnosis: string) => {
     setBoard((prevBoard) => {
       // Find and update the incident across all columns
@@ -219,6 +271,56 @@ function App() {
             ...column,
             items: updatedItems,
           };
+          
+          // Update modal if it's open for this incident
+          if (modalIncident?.id === id) {
+            setModalIncident({
+              ...modalIncident,
+              diagnosis,
+              hasDiagnosis: true,
+            });
+          }
+          
+          break;
+        }
+      }
+      
+      return newBoard;
+    });
+  };
+
+  const handleSolutionUpdate = (id: string, solution: string) => {
+    setBoard((prevBoard) => {
+      // Find and update the incident across all columns
+      const newBoard = { ...prevBoard };
+      
+      for (const columnKey in newBoard) {
+        const column = newBoard[columnKey as keyof typeof newBoard];
+        const itemIndex = column.items.findIndex((item) => item.id === id);
+        
+        if (itemIndex !== -1) {
+          // Create new items array with updated incident
+          const updatedItems = [...column.items];
+          updatedItems[itemIndex] = {
+            ...updatedItems[itemIndex],
+            solution,
+            hasSolution: true,
+          };
+          
+          newBoard[columnKey as keyof typeof newBoard] = {
+            ...column,
+            items: updatedItems,
+          };
+          
+          // Update modal if it's open for this incident
+          if (modalIncident?.id === id) {
+            setModalIncident({
+              ...modalIncident,
+              solution,
+              hasSolution: true,
+            });
+          }
+          
           break;
         }
       }
@@ -272,6 +374,11 @@ function App() {
         const incident = mapBackendIncidentToFrontend(data);
         const status = mapBackendStatusToFrontend(data.status);
         
+        // Update modal if it's open for this incident
+        if (modalIncident?.id === incident.id) {
+          setModalIncident(incident);
+        }
+        
         // Remove incident from all columns first
         const newBoard: IncidentBoardState = {
           Triage: { ...prevBoard.Triage, items: prevBoard.Triage.items.filter(i => i.id !== incident.id) },
@@ -289,7 +396,7 @@ function App() {
     return () => {
       ws.close();
     };
-  }, []);
+  }, [modalIncident]);
 
   // Get all unique teams
   const availableTeams = useMemo(() => {
@@ -399,10 +506,58 @@ function App() {
               </span>
             )}
           </div>
-          <button className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors flex items-center gap-2">
-            <span>🔥</span>
-            Declare incident
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleGenerateIncident}
+              disabled={isGenerating}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <span>⚡</span>
+                  Generate Incident
+                </>
+              )}
+            </button>
+            
+            <button 
+              onClick={handleToggleGenerator}
+              disabled={isTogglingGenerator}
+              className={`${
+                generatorRunning 
+                  ? 'bg-red-600 hover:bg-red-700' 
+                  : 'bg-green-600 hover:bg-green-700'
+              } text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {isTogglingGenerator ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {generatorRunning ? 'Stopping...' : 'Starting...'}
+                </>
+              ) : generatorRunning ? (
+                <>
+                  <span>⏸</span>
+                  Stop Generator
+                </>
+              ) : (
+                <>
+                  <span>▶</span>
+                  Start Generator
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -456,6 +611,7 @@ function App() {
                   onToggleExpand={handleToggleExpand}
                   onOpenModal={handleOpenModal}
                   onDiagnosisUpdate={handleDiagnosisUpdate}
+                  onSolutionUpdate={handleSolutionUpdate}
                   totalIncidents={totalIncidents}
                 />
               ))}

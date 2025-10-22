@@ -5,6 +5,7 @@ export interface BackendIncident {
   message: string;
   source: string;
   status: 'triage' | 'investigating' | 'fixing' | 'resolved';
+  generated_by?: string;
   created_at: string;
   updated_at: string;
 }
@@ -14,7 +15,9 @@ export interface IncidentAnalysis {
   incident_id: string;
   severity: string;
   diagnosis: string;
+  diagnosis_provider?: string;
   solution: string;
+  solution_provider?: string;
   confidence: number;
   created_at: string;
 }
@@ -64,7 +67,17 @@ export async function triggerDiagnosis(id: string): Promise<IncidentAnalysis> {
     method: 'POST',
   });
   if (!response.ok) {
-    throw new Error('Failed to trigger diagnosis');
+    // Try to extract error message from response
+    let errorMessage = 'Failed to trigger diagnosis';
+    try {
+      const errorData = await response.json();
+      if (errorData.error) {
+        errorMessage = errorData.error;
+      }
+    } catch (parseError) {
+      // If JSON parsing fails, use default message
+    }
+    throw new Error(errorMessage);
   }
   return response.json();
 }
@@ -75,7 +88,57 @@ export async function triggerSuggestedFix(id: string): Promise<IncidentAnalysis>
     method: 'POST',
   });
   if (!response.ok) {
-    throw new Error('Failed to trigger suggested fix');
+    // Try to extract error message from response
+    let errorMessage = 'Failed to trigger suggested fix';
+    try {
+      const errorData = await response.json();
+      if (errorData.error) {
+        errorMessage = errorData.error;
+      }
+    } catch (parseError) {
+      // If JSON parsing fails, use default message
+    }
+    throw new Error(errorMessage);
+  }
+  return response.json();
+}
+
+// Generate a random incident
+export async function generateRandomIncident(): Promise<BackendIncident> {
+  const response = await fetch(`${API_BASE_URL}/incidents/generate`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to generate incident');
+  }
+  return response.json();
+}
+
+// Generator control API
+const GENERATOR_URL = import.meta.env.VITE_GENERATOR_URL || 'http://localhost:9000';
+
+export async function startGenerator(): Promise<void> {
+  const response = await fetch(`${GENERATOR_URL}/api/start`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to start generator');
+  }
+}
+
+export async function stopGenerator(): Promise<void> {
+  const response = await fetch(`${GENERATOR_URL}/api/stop`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to stop generator');
+  }
+}
+
+export async function getGeneratorStatus(): Promise<{ is_running: boolean }> {
+  const response = await fetch(`${GENERATOR_URL}/api/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get generator status');
   }
   return response.json();
 }

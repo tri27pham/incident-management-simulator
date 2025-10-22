@@ -45,36 +45,112 @@ export function mapBackendIncidentToFrontend(
       backendIncident.source.split('-')[0].slice(1)
     : 'Unknown';
   
-  // Check if diagnosis is valid (not an error message)
-  const hasValidDiagnosis = analysis?.diagnosis && 
-                           !analysis.diagnosis.includes('error') && 
-                           !analysis.diagnosis.includes('Error') &&
-                           !analysis.diagnosis.startsWith('{');
+  // Check for garbage patterns in text
+  const hasGarbagePatterns = (text?: string) => {
+    if (!text) return false; // Empty text is not garbage, just missing
+    const garbageIndicators = [
+      'externalActionCode', 'BuilderFactory', 'visitInsn', 'roscope',
+      'RODUCTION', 'slider', 'Injected', 'contaminants', 'exposition', 'Basel'
+    ];
+    const garbageCount = garbageIndicators.filter(indicator => text.includes(indicator)).length;
+    return garbageCount > 2;
+  };
   
-  // Check if solution is valid (not an error message)
-  const hasValidSolution = analysis?.solution && 
-                          !analysis.solution.includes('error') && 
-                          !analysis.solution.includes('Error') &&
-                          !analysis.solution.startsWith('{');
+  // Check if diagnosis is valid (not an error message or garbage)
+  let hasValidDiagnosis = false;
+  if (analysis?.diagnosis) {
+    const text = analysis.diagnosis;
+    // Check for ERROR MESSAGES (not diagnoses that mention errors as symptoms)
+    const isErrorMessage = 
+      text.startsWith('Failed to') ||
+      text.startsWith('Error:') ||
+      text.startsWith('Cannot') ||
+      text.includes('Unable to generate') ||
+      text.includes('AI service returned') ||
+      text.includes('Gemini API rate limit') ||
+      text.includes('Gemini API quota') ||
+      text.includes('Gemini API is currently') ||
+      text.includes('Network error') ||
+      text.includes('invalid response') ||
+      text.startsWith('{');
+    
+    const checks = {
+      exists: !!text,
+      lengthOk: text.length > 10,
+      notErrorMessage: !isErrorMessage,
+      noGarbage: !hasGarbagePatterns(text)
+    };
+    
+    hasValidDiagnosis = checks.exists && checks.lengthOk && checks.notErrorMessage && checks.noGarbage;
+    
+    console.log(`[Mapper] Diagnosis validation for ${backendIncident.id.slice(0, 8)}:`, checks, `→ hasValidDiagnosis=${hasValidDiagnosis}`);
+  } else {
+    console.log(`[Mapper] No diagnosis for ${backendIncident.id.slice(0, 8)}`);
+  }
   
-  return {
+  // Check if solution is valid (not an error message or garbage)
+  let hasValidSolution = false;
+  if (analysis?.solution) {
+    const text = analysis.solution;
+    const isErrorMessage = 
+      text.startsWith('Failed to') ||
+      text.startsWith('Error:') ||
+      text.startsWith('Cannot') ||
+      text.includes('Unable to generate') ||
+      text.includes('AI service returned') ||
+      text.includes('Gemini API rate limit') ||
+      text.includes('Gemini API quota') ||
+      text.includes('Gemini API is currently') ||
+      text.includes('Network error') ||
+      text.includes('invalid response') ||
+      text.startsWith('{');
+    
+    hasValidSolution = text.length > 10 && !isErrorMessage && !hasGarbagePatterns(text);
+  }
+  
+  // Debug logging (can be removed later)
+  if (analysis) {
+    console.log(`[Mapper] Incident ${backendIncident.id.slice(0, 8)}:`, {
+      hasDiagnosisField: !!analysis.diagnosis,
+      diagnosisLength: analysis.diagnosis?.length || 0,
+      diagnosisPreview: analysis.diagnosis?.slice(0, 50),
+      hasValidDiagnosis,
+      hasSolutionField: !!analysis.solution,
+      solutionLength: analysis.solution?.length || 0,
+      hasValidSolution
+    });
+  }
+  
+  const mappedIncident = {
     id: backendIncident.id,
     incidentNumber: `INC-${backendIncident.id.slice(0, 4).toUpperCase()}`,
     title: backendIncident.message,
     timeElapsed,
     severity: analysis ? mapSeverity(analysis.severity) : undefined,
     team,
-    description: hasValidDiagnosis ? analysis.diagnosis : undefined,
-    impact: analysis && hasValidDiagnosis ? `Confidence: ${(analysis.confidence * 100).toFixed(0)}%` : undefined,
+    description: hasValidDiagnosis && analysis ? analysis.diagnosis : undefined,
+    impact: analysis && hasValidDiagnosis && analysis.confidence !== undefined ? `Confidence: ${(analysis.confidence * 100).toFixed(0)}%` : undefined,
     affectedServices: backendIncident.source ? [backendIncident.source] : [],
     assignee: undefined,
     createdAt: new Date(backendIncident.created_at).toLocaleString(),
     lastUpdate: new Date(backendIncident.updated_at).toLocaleString(),
-    diagnosis: hasValidDiagnosis ? analysis.diagnosis : undefined,
-    solution: hasValidSolution ? analysis.solution : undefined,
-    hasDiagnosis: hasValidDiagnosis || false,
-    hasSolution: hasValidSolution || false,
+    diagnosis: hasValidDiagnosis && analysis ? analysis.diagnosis : undefined,
+    diagnosisProvider: analysis?.diagnosis_provider as 'gemini' | 'groq' | 'error' | 'unknown' | undefined,
+    solution: hasValidSolution && analysis ? analysis.solution : undefined,
+    solutionProvider: analysis?.solution_provider as 'gemini' | 'groq' | 'error' | 'unknown' | undefined,
+    hasDiagnosis: hasValidDiagnosis,
+    hasSolution: hasValidSolution,
+    generated_by: backendIncident.generated_by as 'gemini' | 'groq' | 'fallback' | 'manual' | undefined,
   };
+  
+  console.log(`[Mapper] Final incident ${backendIncident.id.slice(0, 8)}:`, {
+    hasDiagnosis: mappedIncident.hasDiagnosis,
+    hasSolution: mappedIncident.hasSolution,
+    diagnosisSet: !!mappedIncident.diagnosis,
+    solutionSet: !!mappedIncident.solution
+  });
+  
+  return mappedIncident;
 }
 
 // Map frontend status to backend status

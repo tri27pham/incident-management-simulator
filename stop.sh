@@ -26,7 +26,7 @@ if [ -f /tmp/incident-frontend.pid ]; then
 fi
 
 if [ -f /tmp/incident-generator.pid ]; then
-    echo "🎲 Stopping Incident Generator (PID)..."
+    echo "🎲 Stopping Generator API (PID)..."
     kill -9 $(cat /tmp/incident-generator.pid) 2>/dev/null || true
     rm /tmp/incident-generator.pid
 fi
@@ -36,6 +36,7 @@ echo "🧹 Cleaning up processes by port..."
 lsof -ti:8080 | xargs kill -9 2>/dev/null || true  # Backend
 lsof -ti:5173 | xargs kill -9 2>/dev/null || true  # Frontend
 lsof -ti:8000 | xargs kill -9 2>/dev/null || true  # AI Diagnosis
+lsof -ti:9000 | xargs kill -9 2>/dev/null || true  # Generator API
 
 # Kill by process pattern (final fallback)
 echo "🧹 Cleaning up processes by name..."

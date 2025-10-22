@@ -73,11 +73,25 @@ else
     ALL_GOOD=false
 fi
 
-# Check Incident Generator (optional)
+# Check Generator API
 if [ -f /tmp/incident-generator.pid ] && kill -0 $(cat /tmp/incident-generator.pid) 2>/dev/null; then
-    echo "✅ Incident Generator: Running (PID: $(cat /tmp/incident-generator.pid))"
+    if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+        echo "✅ Generator API:     Running (PID: $(cat /tmp/incident-generator.pid))"
+        echo "   └─ API:            http://localhost:9000 ✓"
+        # Check generator status
+        GEN_STATUS=$(curl -s http://localhost:9000/api/status 2>/dev/null | grep -o '"is_running":[^,}]*' | cut -d: -f2)
+        if [ "$GEN_STATUS" = "true" ]; then
+            echo "   └─ Generator:      🟢 ACTIVE (creating incidents)"
+        else
+            echo "   └─ Generator:      ⚪ IDLE (use UI button to start)"
+        fi
+    else
+        echo "⚠️  Generator API:     Running but NOT RESPONDING"
+        ALL_GOOD=false
+    fi
 else
-    echo "⚠️  Incident Generator: STOPPED (optional)"
+    echo "❌ Generator API:     STOPPED"
+    ALL_GOOD=false
 fi
 
 echo ""

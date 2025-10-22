@@ -17,9 +17,12 @@ export interface Incident {
   createdAt?: string;
   lastUpdate?: string;
   diagnosis?: string;
+  diagnosisProvider?: 'gemini' | 'groq' | 'error' | 'unknown';
   solution?: string;
+  solutionProvider?: 'gemini' | 'groq' | 'error' | 'unknown';
   hasDiagnosis?: boolean;
   hasSolution?: boolean;
+  generated_by?: 'gemini' | 'groq' | 'fallback' | 'manual';
 }
 
 export type IncidentBoardState = {

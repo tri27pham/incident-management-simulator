@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
@@ -101,12 +102,14 @@ func RunFullAnalysisPipeline(incident models.Incident) {
 type aiDiagnosisResponse struct {
 	Diagnosis string `json:"diagnosis"`
 	Severity  string `json:"severity"`
+	Provider  string `json:"provider"`
 }
 
 // aiSuggestedFixResponse defines the expected JSON structure from the AI service.
 type aiSuggestedFixResponse struct {
 	SuggestedFix string  `json:"suggested_fix"`
 	Confidence   float64 `json:"confidence"`
+	Provider     string  `json:"provider"`
 }
 
 func TriggerAIDiagnosis(incidentID uuid.UUID) (models.IncidentAnalysis, error) {
@@ -128,12 +131,18 @@ func TriggerAIDiagnosis(incidentID uuid.UUID) (models.IncidentAnalysis, error) {
 		return analysis, fmt.Errorf("failed to decode diagnosis response: %w", err)
 	}
 
+	// Check if the diagnosis is an error message (don't save to DB)
+	if strings.Contains(diagResp.Diagnosis, "Gemini API") {
+		return analysis, fmt.Errorf("AI service error: %s", diagResp.Diagnosis)
+	}
+
 	// 3. Create or find the analysis record and update it.
 	// Use FirstOrInit to find the record or initialize a new one in memory.
 	db.DB.Where(models.IncidentAnalysis{IncidentID: incident.ID}).FirstOrInit(&analysis)
 
 	analysis.Diagnosis = diagResp.Diagnosis
 	analysis.Severity = diagResp.Severity
+	analysis.DiagnosisProvider = diagResp.Provider
 	if err := db.DB.Save(&analysis).Error; err != nil {
 		return analysis, fmt.Errorf("failed to save incident analysis: %w", err)
 	}
@@ -168,9 +177,15 @@ func TriggerAISuggestedFix(incidentID uuid.UUID) (models.IncidentAnalysis, error
 		return analysis, fmt.Errorf("failed to decode suggested fix response: %w", err)
 	}
 
+	// Check if the solution is an error message (don't save to DB)
+	if strings.Contains(fixResp.SuggestedFix, "Gemini API") {
+		return analysis, fmt.Errorf("AI service error: %s", fixResp.SuggestedFix)
+	}
+
 	// 3. Update the analysis record with the new fix.
 	analysis.Solution = fixResp.SuggestedFix
 	analysis.Confidence = fixResp.Confidence
+	analysis.SolutionProvider = fixResp.Provider
 	if err := db.DB.Save(&analysis).Error; err != nil {
 		return analysis, fmt.Errorf("failed to save incident analysis: %w", err)
 	}
@@ -202,4 +217,42 @@ func callAIService(message string, path string) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+// GenerateRandomIncident creates a random incident using AI
+func GenerateRandomIncident() (models.Incident, error) {
+	// Call the dedicated incident generation endpoint
+	aiURL := os.Getenv("AI_DIAGNOSIS_URL") + "/api/v1/generate-incident"
+	resp, err := http.Post(aiURL, "application/json", nil)
+	if err != nil {
+		return models.Incident{}, fmt.Errorf("failed to call AI service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return models.Incident{}, fmt.Errorf("failed to read AI response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return models.Incident{}, fmt.Errorf("AI service error: %s", string(body))
+	}
+
+	// Parse the AI response to extract the incident data and provider
+	var incidentData struct {
+		Message  string `json:"message"`
+		Source   string `json:"source"`
+		Provider string `json:"provider"`
+	}
+
+	if err := json.Unmarshal(body, &incidentData); err != nil {
+		return models.Incident{}, fmt.Errorf("failed to parse incident data from AI: %w", err)
+	}
+
+	return models.Incident{
+		Message:     incidentData.Message,
+		Source:      incidentData.Source,
+		Status:      "triage",
+		GeneratedBy: incidentData.Provider, // Track which AI generated this
+	}, nil
 }

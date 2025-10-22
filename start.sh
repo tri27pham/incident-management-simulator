@@ -43,6 +43,12 @@ if lsof -ti:8000 > /dev/null 2>&1; then
     CONFLICTS=1
 fi
 
+if lsof -ti:9000 > /dev/null 2>&1; then
+    echo "⚠️  Port 9000 (Generator API) is in use. Killing conflicting process..."
+    lsof -ti:9000 | xargs kill -9 2>/dev/null || true
+    CONFLICTS=1
+fi
+
 if [ $CONFLICTS -eq 1 ]; then
     echo "✅ Conflicts resolved. Waiting for ports to be released..."
     sleep 2
@@ -89,7 +95,7 @@ cd "$PROJECT_DIR/frontend"
 npm run dev > /tmp/incident-frontend.log 2>&1 &
 echo $! > /tmp/incident-frontend.pid
 
-echo "🎲 Starting Incident Generator..."
+echo "🎲 Starting Incident Generator API..."
 cd "$PROJECT_DIR/incident-generator"
 BACKEND_URL=http://localhost:8080 python3 -u app.py > /tmp/incident-generator.log 2>&1 &
 echo $! > /tmp/incident-generator.pid
@@ -138,11 +144,13 @@ else
     FAILED=1
 fi
 
-# Check Generator
-if kill -0 $(cat /tmp/incident-generator.pid 2>/dev/null) 2>/dev/null; then
-    echo "✅ Incident Generator: Running"
+# Check Generator API
+if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+    echo "✅ Generator API:     http://localhost:9000 (stopped by default)"
 else
-    echo "⚠️  Incident Generator: Not running (optional)"
+    echo "❌ Generator API:     NOT RESPONDING"
+    echo "   Check logs: tail -f /tmp/incident-generator.log"
+    FAILED=1
 fi
 
 echo ""
