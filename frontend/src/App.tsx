@@ -678,7 +678,7 @@ function App() {
               onMouseEnter={(e) => {
                 if (!isGenerating) {
                   e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
-                  e.currentTarget.style.borderColor = 'rgb(96, 165, 250)';
+                  e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -707,17 +707,19 @@ function App() {
               disabled={isTogglingGenerator}
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
               style={{
-                backgroundColor: `rgb(var(--card-bg))`,
-                borderColor: generatorRunning ? 'rgb(239, 68, 68)' : 'rgb(74, 222, 128)',
-                color: `rgb(var(--text-primary))`,
+                backgroundColor: generatorRunning ? 'rgb(249, 115, 22)' : `rgb(var(--card-bg))`,
+                borderColor: 'rgb(249, 115, 22)',
+                color: generatorRunning ? 'white' : `rgb(var(--text-primary))`,
               }}
               onMouseEnter={(e) => {
-                if (!isTogglingGenerator) {
+                if (!isTogglingGenerator && !generatorRunning) {
                   e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
                 }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
+                if (!generatorRunning) {
+                  e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
+                }
               }}
             >
               {isTogglingGenerator ? (
@@ -781,7 +783,7 @@ function App() {
         <section className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-primary">Trends</h2>
+              <h2 className="text-2xl font-semibold text-primary">Trends</h2>
               <p className="text-sm text-secondary">vs last 4 weeks</p>
             </div>
             <button className="text-sm text-secondary hover:text-primary transition-colors">View all</button>
@@ -796,8 +798,8 @@ function App() {
         {/* Active Incidents Section */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-primary">Active incidents</h2>
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-2xl font-semibold text-primary">Active incidents</h2>
               <span className="text-sm text-secondary font-medium">
                 {totalIncidents}
               </span>
@@ -805,9 +807,18 @@ function App() {
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => setShowResolvedPanel(true)}
-                className="text-sm text-secondary hover:text-primary transition-colors flex items-center gap-1 cursor-pointer"
+                className="text-sm flex items-center gap-1 cursor-pointer group"
+                style={{
+                  color: `rgb(var(--text-secondary))`
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'rgb(249, 115, 22)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = `rgb(var(--text-secondary))`;
+                }}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ transition: 'none' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 View Resolved ({resolvedIncidents.length})

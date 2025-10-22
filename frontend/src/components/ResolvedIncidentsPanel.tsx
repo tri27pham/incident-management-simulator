@@ -92,9 +92,8 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                     }`}
                     style={{
                       backgroundColor: `rgb(var(--card-bg))`,
-                      borderColor: `rgb(var(--border-color))`,
+                      borderColor: isExpanded ? 'rgb(249, 115, 22)' : `rgb(var(--border-color))`,
                       borderWidth: '1px',
-                      boxShadow: isExpanded ? '0 0 0 2px rgba(249, 115, 22, 0.3), 0 0 15px rgba(249, 115, 22, 0.2)' : undefined
                     }}
                   >
                     {/* Header */}
@@ -104,19 +103,6 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                         <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
                           Resolved
                         </span>
-                        {incident.generated_by && incident.generated_by !== 'manual' && (
-                          <span 
-                            className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border ${
-                              incident.generated_by === 'gemini' 
-                                ? 'bg-purple-100 text-purple-700 border-purple-200 ai-badge-gemini' 
-                                : incident.generated_by === 'groq'
-                                ? 'bg-orange-100 text-orange-700 border-orange-200 ai-badge-groq'
-                                : 'bg-gray-100 text-gray-600 border-gray-200 ai-badge-default'
-                            }`}
-                          >
-                            {incident.generated_by === 'gemini' ? '✨' : incident.generated_by === 'groq' ? '⚡' : '📋'}
-                          </span>
-                        )}
                       </div>
                       <span className="text-xs text-tertiary">{incident.timeElapsed}</span>
                     </div>
@@ -154,17 +140,6 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                               <p className="text-xs font-semibold text-primary">AI Diagnosis</p>
-                              {incident.diagnosisProvider && incident.diagnosisProvider !== 'unknown' && (
-                                <span 
-                                  className={`text-[9px] px-1 py-0.5 rounded font-semibold border ${
-                                    incident.diagnosisProvider === 'gemini' 
-                                      ? 'bg-purple-100 text-purple-700 border-purple-200' 
-                                      : 'bg-orange-100 text-orange-700 border-orange-200'
-                                  }`}
-                                >
-                                  {incident.diagnosisProvider === 'gemini' ? '✨' : '⚡'}
-                                </span>
-                              )}
                             </div>
                             <div className="text-xs text-secondary max-h-32 overflow-y-auto" style={{ whiteSpace: 'pre-wrap' }}>
                               {incident.diagnosis}
@@ -180,17 +155,6 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                               </svg>
                               <p className="text-xs font-semibold text-primary">Suggested Solution</p>
-                              {incident.solutionProvider && incident.solutionProvider !== 'unknown' && (
-                                <span 
-                                  className={`text-[9px] px-1 py-0.5 rounded font-semibold border ${
-                                    incident.solutionProvider === 'gemini' 
-                                      ? 'bg-purple-100 text-purple-700 border-purple-200' 
-                                      : 'bg-orange-100 text-orange-700 border-orange-200'
-                                  }`}
-                                >
-                                  {incident.solutionProvider === 'gemini' ? '✨' : '⚡'}
-                                </span>
-                              )}
                             </div>
                             <div className="text-xs text-secondary max-h-32 overflow-y-auto" style={{ whiteSpace: 'pre-wrap' }}>
                               {incident.solution}
