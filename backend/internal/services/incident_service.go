@@ -15,10 +15,10 @@ import (
 	wshub "github.com/tri27pham/incident-management-simulator/backend/internal/websocket"
 )
 
-// FullIncidentDetails is a temporary struct to combine incident and its analysis for broadcasting
+// FullIncidentDetails wraps an incident for broadcasting
+// The embedded Incident already includes Analysis via the foreign key relationship
 type FullIncidentDetails struct {
 	models.Incident
-	Analysis *models.IncidentAnalysis `json:"analysis,omitempty"`
 }
 
 func CreateIncident(incident *models.Incident) error {
@@ -78,36 +78,23 @@ func RunFullAnalysisPipeline(incident models.Incident) {
 
 	// Step 2: Trigger Diagnosis
 	log.Printf("Starting analysis pipeline for incident %s", incident.ID)
-	analysis, err := TriggerAIDiagnosis(incident.ID)
+	_, err := TriggerAIDiagnosis(incident.ID)
 	if err != nil {
 		log.Printf("Error in AI diagnosis for incident %s: %v", incident.ID, err)
 		return // End the pipeline if diagnosis fails
 	}
 
 	// Step 3: Broadcast Diagnosis Update
-	incidentWithStatus, _ := GetIncidentByID(incident.ID) // Refetch incident to get latest status
+	// Refetch incident to get the latest status with Analysis preloaded
+	incidentWithStatus, _ := GetIncidentByID(incident.ID)
 	detailsWithDiagnosis := FullIncidentDetails{
 		Incident: incidentWithStatus,
-		Analysis: &analysis,
 	}
 	wshub.WSHub.Broadcast <- detailsWithDiagnosis
 	log.Printf("Broadcasted diagnosis update for incident %s", incident.ID)
 
-	// Step 4: Trigger Suggested Fix
-	finalAnalysis, err := TriggerAISuggestedFix(incident.ID)
-	if err != nil {
-		log.Printf("Error in AI suggested fix for incident %s: %v", incident.ID, err)
-		return // End the pipeline if fix suggestion fails
-	}
-
-	// Step 5: Broadcast Final Update
-	incidentWithFix, _ := GetIncidentByID(incident.ID) // Refetch again for completeness
-	detailsWithFix := FullIncidentDetails{
-		Incident: incidentWithFix,
-		Analysis: &finalAnalysis,
-	}
-	wshub.WSHub.Broadcast <- detailsWithFix
-	log.Printf("Finished analysis pipeline and broadcasted final update for incident %s", incident.ID)
+	// Note: Solution is now triggered manually via "Get AI Solution" button
+	log.Printf("Finished diagnosis pipeline for incident %s (solution can be triggered manually)", incident.ID)
 }
 
 // aiDiagnosisResponse defines the expected JSON structure from the AI service.

@@ -2,7 +2,7 @@ import { Draggable } from 'react-beautiful-dnd';
 import { Incident } from '../types';
 import { SeverityBars } from './SeverityBars';
 import { useState, useEffect, useRef } from 'react';
-import { triggerDiagnosis } from '../services/api';
+import { triggerDiagnosis, triggerSuggestedFix } from '../services/api';
 
 interface IncidentCardProps {
   item: Incident;
@@ -17,6 +17,8 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
   const [isDiagnosing, setIsDiagnosing] = useState(false);
   const [diagnosisError, setDiagnosisError] = useState(false);
   const [isWaitingForAutoDiagnosis, setIsWaitingForAutoDiagnosis] = useState(!item.hasDiagnosis && !item.hasSolution);
+  const [isGettingSolution, setIsGettingSolution] = useState(false);
+  const [solutionError, setSolutionError] = useState(false);
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't trigger if clicking the modal button or while dragging
@@ -74,6 +76,22 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
       setDiagnosisError(true);
     } finally {
       setIsDiagnosing(false);
+    }
+  };
+
+  const handleGetSolution = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsGettingSolution(true);
+    setSolutionError(false);
+    
+    try {
+      await triggerSuggestedFix(item.id);
+      // WebSocket will update the solution automatically
+    } catch (error) {
+      console.error('Failed to get solution:', error);
+      setSolutionError(true);
+    } finally {
+      setIsGettingSolution(false);
     }
   };
 
@@ -178,6 +196,30 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                   </div>
                 </div>
               )}
+
+              {/* Show "Get AI Solution" button when diagnosis exists but solution doesn't */}
+              {item.hasDiagnosis && !item.hasSolution && !isGettingSolution && (
+                <button
+                  onClick={handleGetSolution}
+                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Get AI Solution
+                </button>
+              )}
+
+              {/* Show spinner when getting solution */}
+              {isGettingSolution && (
+                <div className="w-full mt-2 px-3 py-2 bg-gray-100 text-gray-600 text-xs font-medium rounded-md flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Getting solution...
+                </div>
+              )}
               
               {item.hasSolution && item.solution && (
                 <div className="w-full mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
@@ -196,6 +238,12 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {diagnosisError && !isDiagnosing && (
                 <div className="w-full mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-md">
                   <p className="text-xs text-red-600">Failed to get diagnosis. Please try again.</p>
+                </div>
+              )}
+
+              {solutionError && !isGettingSolution && (
+                <div className="w-full mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-xs text-red-600">Failed to get solution. Please try again.</p>
                 </div>
               )}
             </div>
