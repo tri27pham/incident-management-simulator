@@ -5,6 +5,7 @@ import { IncidentColumn } from './components/IncidentColumn';
 import { TrendCard } from './components/TrendCard';
 import { IncidentModal } from './components/IncidentModal';
 import { FilterBar } from './components/FilterBar';
+import { ResolvedIncidentsPanel } from './components/ResolvedIncidentsPanel';
 import * as api from './services/api';
 import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
 import { useTheme } from './contexts/ThemeContext';
@@ -180,6 +181,8 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatorRunning, setGeneratorRunning] = useState(false);
   const [isTogglingGenerator, setIsTogglingGenerator] = useState(false);
+  const [showResolvedPanel, setShowResolvedPanel] = useState(false);
+  const [resolvedIncidents, setResolvedIncidents] = useState<Incident[]>([]);
   
   // Use a ref to avoid WebSocket reconnections when modal changes
   const modalIncidentRef = useRef<Incident | null>(null);
@@ -189,20 +192,20 @@ function App() {
     modalIncidentRef.current = modalIncident;
   }, [modalIncident]);
 
-  // Lock body scroll when modal is open
+  // Lock body scroll when modal or resolved panel is open
   useEffect(() => {
-    if (modalIncident) {
+    if (modalIncident || showResolvedPanel) {
       // Save original overflow value
       const originalOverflow = document.body.style.overflow;
       // Lock scroll
       document.body.style.overflow = 'hidden';
       
-      // Cleanup: restore original overflow when modal closes
+      // Cleanup: restore original overflow when modal/panel closes
       return () => {
         document.body.style.overflow = originalOverflow;
       };
     }
-  }, [modalIncident]);
+  }, [modalIncident, showResolvedPanel]);
 
   const handleToggleExpand = (id: string) => {
     setExpandedCardId(expandedCardId === id ? null : id);
@@ -360,6 +363,80 @@ function App() {
       
       return newBoard;
     });
+  };
+
+  const handleStatusUpdate = async (id: string, newStatus: string) => {
+    try {
+      // Map frontend status to backend format
+      const backendStatus = mapFrontendStatusToBackend(newStatus);
+      
+      // Call API to update status
+      await api.updateIncidentStatus(id, backendStatus);
+      
+      // The WebSocket will handle the actual state update, including status history
+      // But we can optimistically update the UI
+      setBoard((prevBoard) => {
+        const newBoard = { ...prevBoard };
+        
+        // Find the incident in its current column
+        let incident: Incident | null = null;
+        let sourceColumn: keyof IncidentBoardState | null = null;
+        
+        for (const columnKey in newBoard) {
+          const column = newBoard[columnKey as keyof typeof newBoard];
+          const itemIndex = column.items.findIndex((item) => item.id === id);
+          
+          if (itemIndex !== -1) {
+            incident = column.items[itemIndex];
+            sourceColumn = columnKey as keyof IncidentBoardState;
+            
+            // Remove from source column
+            newBoard[sourceColumn] = {
+              ...column,
+              items: column.items.filter((item) => item.id !== id),
+            };
+            break;
+          }
+        }
+        
+        if (incident && sourceColumn) {
+          // Add to destination column (or remove if Resolved)
+          if (newStatus !== 'Resolved') {
+            // Update incident status
+            const updatedIncident: Incident = {
+              ...incident,
+              status: newStatus as 'Triage' | 'Investigating' | 'Fixing',
+            };
+            
+            const destColumn = newBoard[newStatus as keyof IncidentBoardState];
+            if (destColumn) {
+              newBoard[newStatus as keyof IncidentBoardState] = {
+                ...destColumn,
+                items: [...destColumn.items, updatedIncident],
+              };
+            }
+            
+            // Update modal if it's open for this incident
+            if (modalIncident?.id === id) {
+              setModalIncident(updatedIncident);
+            }
+          } else {
+            // Add to resolved incidents list
+            setResolvedIncidents((prev) => [incident, ...prev]);
+            
+            // Close modal if incident is resolved
+            if (modalIncident?.id === id) {
+              setModalIncident(null);
+            }
+          }
+        }
+        
+        return newBoard;
+      });
+    } catch (error) {
+      console.error('Failed to update incident status:', error);
+      // Could add error toast notification here
+    }
   };
 
   // Fetch incidents from backend on mount
@@ -691,7 +768,18 @@ function App() {
                 {totalIncidents}
               </span>
             </div>
-            <button className="text-sm text-secondary hover:text-primary transition-colors">View all</button>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setShowResolvedPanel(true)}
+                className="text-sm text-secondary hover:text-primary transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                View Resolved ({resolvedIncidents.length})
+              </button>
+              <button className="text-sm text-secondary hover:text-primary transition-colors">View all</button>
+            </div>
           </div>
 
           {/* Filters */}
@@ -730,8 +818,19 @@ function App() {
           incident={modalIncident} 
           onClose={handleCloseModal}
           onSolutionUpdate={handleSolutionUpdate}
+          onStatusUpdate={handleStatusUpdate}
         />
       )}
+
+      {/* Resolved Incidents Panel */}
+      <ResolvedIncidentsPanel 
+        isOpen={showResolvedPanel}
+        onClose={() => setShowResolvedPanel(false)}
+        incidents={resolvedIncidents}
+        onIncidentClick={(incident) => {
+          setModalIncident(incident);
+        }}
+      />
     </div>
   );
 }

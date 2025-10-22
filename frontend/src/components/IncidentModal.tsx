@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Incident } from '../types';
 import { triggerSuggestedFix } from '../services/api';
 
@@ -6,6 +6,7 @@ interface IncidentModalProps {
   incident: Incident;
   onClose: () => void;
   onSolutionUpdate: (id: string, solution: string) => void;
+  onStatusUpdate?: (id: string, newStatus: string) => void;
 }
 
 const severityConfig = {
@@ -16,10 +17,100 @@ const severityConfig = {
   minor: { label: 'Minor', color: 'bg-gray-100 text-gray-800' },
 };
 
-export function IncidentModal({ incident, onClose, onSolutionUpdate }: IncidentModalProps) {
+// Helper component to format bullet points
+function FormattedText({ text, className }: { text: string; className?: string }) {
+  // Split by bullet points (•) and filter out empty strings
+  const lines = text.split('•').map(line => line.trim()).filter(line => line.length > 0);
+  
+  return (
+    <div className={className}>
+      {lines.map((line, index) => (
+        <div key={index} className="flex gap-2 mb-2 last:mb-0">
+          <span className="shrink-0 mt-0.5">•</span>
+          <span className="flex-1">{line}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpdate }: IncidentModalProps) {
   const severity = incident.severity ? severityConfig[incident.severity] : null;
   const [isGettingSolution, setIsGettingSolution] = useState(false);
   const [solutionError, setSolutionError] = useState<string | null>(null);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Get available status options (exclude current status, add Resolved for Fixing)
+  const getAvailableStatuses = () => {
+    const allStatuses = ['Triage', 'Investigating', 'Fixing'];
+    const statuses = allStatuses.filter(status => status !== incident.status);
+    
+    // Add "Resolved" option if incident is in Fixing status
+    if (incident.status === 'Fixing') {
+      statuses.push('Resolved');
+    }
+    
+    return statuses;
+  };
+
+  const availableStatuses = getAvailableStatuses();
+
+  // Get icon for each status
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'Triage':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+        );
+      case 'Investigating':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        );
+      case 'Fixing':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        );
+      case 'Resolved':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowStatusDropdown(false);
+      }
+    };
+
+    if (showStatusDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showStatusDropdown]);
+
+  const handleStatusChange = async (newStatus: string) => {
+    setShowStatusDropdown(false);
+    if (onStatusUpdate) {
+      onStatusUpdate(incident.id, newStatus);
+    }
+  };
 
   const handleGetSolution = async () => {
     setIsGettingSolution(true);
@@ -113,7 +204,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate }: IncidentM
                 </div>
               )}
 
-              <div className="diagnosis-box rounded-lg p-4">
+              <div className="diagnosis-box rounded-lg py-4 pr-4 pl-3">
                 <div className="flex items-start gap-3">
                   <svg className="w-5 h-5 text-green-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -138,9 +229,11 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate }: IncidentM
                       scrollbarWidth: 'thin',
                       scrollbarColor: 'rgb(var(--border-color)) transparent'
                     }}>
-                      <p className="diagnosis-text text-sm leading-relaxed">
-                        {incident.description || 'Awaiting AI diagnosis...'}
-                      </p>
+                      {incident.description ? (
+                        <FormattedText text={incident.description} className="diagnosis-text text-sm leading-relaxed" />
+                      ) : (
+                        <p className="diagnosis-text text-sm leading-relaxed">Awaiting AI diagnosis...</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -149,7 +242,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate }: IncidentM
               {/* AI Solution Section */}
               <div>
                 {incident.hasSolution && incident.solution ? (
-                  <div className="solution-box rounded-lg p-4">
+                  <div className="solution-box rounded-lg py-4 pr-4 pl-3">
                     <div className="flex items-start gap-3">
                       <svg className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -179,7 +272,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate }: IncidentM
                           scrollbarWidth: 'thin',
                           scrollbarColor: 'rgb(var(--border-color)) transparent'
                         }}>
-                          <p className="solution-text text-sm leading-relaxed">{incident.solution}</p>
+                          <FormattedText text={incident.solution} className="solution-text text-sm leading-relaxed" />
                         </div>
                       </div>
                     </div>
@@ -324,17 +417,66 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate }: IncidentM
           {/* Actions */}
           <div className="pt-4 mt-6" style={{ borderTop: `1px solid rgb(var(--border-color))` }}>
             <div className="flex gap-3">
-              <button 
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                style={{
-                  backgroundColor: `rgb(var(--accent-primary))`,
-                  color: 'white',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = `rgb(var(--accent-hover))`}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = `rgb(var(--accent-primary))`}
-              >
-                Update Status
-              </button>
+              {/* Update Status Dropdown */}
+              <div className="relative" ref={dropdownRef}>
+                <button 
+                  onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                  style={{
+                    backgroundColor: `rgb(var(--accent-primary))`,
+                    color: 'white',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = `rgb(var(--accent-hover))`}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = `rgb(var(--accent-primary))`}
+                >
+                  Update Status
+                  <svg 
+                    className={`w-4 h-4 transition-transform ${showStatusDropdown ? 'rotate-180' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Dropdown Menu - Opens Upward */}
+                {showStatusDropdown && availableStatuses.length > 0 && (
+                  <div 
+                    className="absolute bottom-full left-0 mb-2 rounded-lg shadow-lg border overflow-hidden z-50"
+                    style={{
+                      backgroundColor: `rgb(var(--bg-secondary))`,
+                      borderColor: `rgb(var(--border-color))`,
+                      minWidth: '180px'
+                    }}
+                  >
+                    {availableStatuses.map((status) => {
+                      const isResolved = status === 'Resolved';
+                      return (
+                        <button
+                          key={status}
+                          onClick={() => handleStatusChange(status)}
+                          className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2.5 ${
+                            isResolved ? 'text-white' : 'text-primary'
+                          }`}
+                          style={{
+                            backgroundColor: isResolved ? '#10B981' : `rgb(var(--bg-secondary))`,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = isResolved ? '#059669' : `rgb(var(--bg-tertiary))`;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = isResolved ? '#10B981' : `rgb(var(--bg-secondary))`;
+                          }}
+                        >
+                          {getStatusIcon(status)}
+                          <span>{status}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <button 
                 className="px-4 py-2 rounded-lg text-sm font-medium text-primary transition-colors border-theme"
                 style={{

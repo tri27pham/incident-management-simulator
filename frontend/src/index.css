@@ -134,8 +134,8 @@ body *:not(.no-theme-transition) {
 
 .diagnosis-box .diagnosis-text {
   color: rgb(21 128 61); /* green-700 */
-  white-space: pre-wrap; /* Preserve line breaks */
-  line-height: 1.6;
+  line-height: 1.8;
+  word-wrap: break-word;
 }
 
 .solution-box {
@@ -149,8 +149,8 @@ body *:not(.no-theme-transition) {
 
 .solution-box .solution-text {
   color: rgb(29 78 216); /* blue-700 */
-  white-space: pre-wrap; /* Preserve line breaks */
-  line-height: 1.6;
+  line-height: 1.8;
+  word-wrap: break-word;
 }
 
 [data-theme="dark"] .diagnosis-box {
@@ -236,4 +236,12 @@ body *:not(.no-theme-transition) {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--text-tertiary));
+}
+
+/* Backdrop blur support */
+@supports (backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px)) {
+  .backdrop-blur-sm {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
 }
