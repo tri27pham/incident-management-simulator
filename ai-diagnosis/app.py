@@ -266,15 +266,41 @@ def is_valid_incident_response(text: str) -> bool:
 @app.post("/api/v1/generate-incident")
 def generate_incident():
     """Generate a random incident using AI."""
-    prompt = """Generate a realistic software incident. 
+    import random
+    
+    # Randomly select a category to enforce variety
+    categories = [
+        ("API/Gateway", "API Gateway returning 503 errors for EU users", "api-gateway"),
+        ("Authentication", "JWT token validation failing causing user logout loops", "auth-service"),
+        ("Frontend", "JavaScript bundle failing to load causing blank pages", "cdn"),
+        ("Cache", "Redis memory exhaustion causing cache misses and API slowdowns", "redis-cache"),
+        ("Message Queue", "Kafka consumer lag exceeding 1 million messages", "event-processor"),
+        ("Infrastructure", "Kubernetes nodes running out of disk space causing pod evictions", "k8s-cluster"),
+        ("Payment", "Stripe webhook delays causing order confirmation failures", "payment-service"),
+        ("Email", "SendGrid rate limits causing password reset email delays", "email-service"),
+        ("Deployment", "Recent deployment causing memory leaks in production pods", "user-api"),
+        ("Monitoring", "Datadog agent crashes causing metrics gaps in dashboards", "observability"),
+        ("Network", "Network latency spikes between regions causing timeout errors", "load-balancer"),
+        ("Storage", "S3 bucket access errors preventing image uploads", "storage-service"),
+        ("Search", "Elasticsearch cluster yellow state causing slow search queries", "search-api"),
+        ("Database", "PostgreSQL connection pool exhaustion causing transaction timeouts", "postgres-db"),
+        ("CDN", "CloudFlare cache purge causing origin server overload", "cdn-origin"),
+    ]
+    
+    category, example_msg, example_src = random.choice(categories)
+    
+    prompt = f"""Generate a realistic software incident in the {category} category.
+
+    Be creative and specific. DO NOT repeat this example exactly: "{example_msg}"
+    Use it as inspiration but create something DIFFERENT in the same category.
     
     Respond with ONLY valid JSON (no explanations, no markdown):
-    {
-      "message": "A specific incident description like 'API Gateway returning 503 errors for EU users'",
-      "source": "A service name like 'api-gateway' or 'postgres-db'"
-    }
+    {{
+      "message": "A specific incident description (be creative and different!)",
+      "source": "A service name like '{example_src}' or similar"
+    }}
     
-    Make it realistic and varied. Do NOT include any other text."""
+    Make it realistic and unique. Do NOT include any other text."""
     
     # Try to get a valid response (retry up to 2 times if we get garbage)
     max_attempts = 2

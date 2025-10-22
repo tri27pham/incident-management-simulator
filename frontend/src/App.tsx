@@ -7,6 +7,7 @@ import { IncidentModal } from './components/IncidentModal';
 import { FilterBar } from './components/FilterBar';
 import * as api from './services/api';
 import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
+import { useTheme } from './contexts/ThemeContext';
 
 const trendMetrics: TrendMetric[] = [
   { label: 'Critical incidents', value: '+27%', change: 27, isPositive: true },
@@ -160,6 +161,7 @@ const mockBoardState: IncidentBoardState = {
 
 
 function App() {
+  const { theme, toggleTheme } = useTheme();
   const [board, setBoard] = useState(emptyBoardState);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [modalIncident, setModalIncident] = useState<Incident | null>(null);
@@ -522,23 +524,26 @@ function App() {
 
   if (loading) {
     return (
-      <div className="bg-white min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: `rgb(var(--bg-primary))` }}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading incidents...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto mb-4"></div>
+          <p style={{ color: `rgb(var(--text-secondary))` }}>Loading incidents...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="min-h-screen" style={{ backgroundColor: `rgb(var(--bg-primary))` }}>
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
+      <header className="px-6 py-4" style={{ 
+        backgroundColor: `rgb(var(--bg-secondary))`,
+        borderBottom: `1px solid rgb(var(--border-color))`
+      }}>
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🏠</span>
-            <h1 className="text-xl font-semibold text-gray-900">Home</h1>
+            <h1 className="text-xl font-semibold" style={{ color: `rgb(var(--text-primary))` }}>Home</h1>
             {error && (
               <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
                 {error}
@@ -596,19 +601,53 @@ function App() {
                 </>
               )}
             </button>
+            
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg transition-colors flex items-center gap-2"
+              style={{
+                color: `rgb(var(--text-secondary))`,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = `rgb(var(--accent-primary))`;
+                e.currentTarget.style.backgroundColor = theme === 'light' ? 'rgb(255 237 213)' : 'rgb(55 65 81)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = `rgb(var(--text-secondary))`;
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            >
+              {theme === 'light' ? (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                  <span className="text-xs">Light</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  <span className="text-xs">Dark</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-6">
+      <main className="max-w-7xl mx-auto px-6 pt-6 pb-16">
         {/* Trends Section */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Trends</h2>
-              <p className="text-sm text-gray-500">vs last 4 weeks</p>
+              <h2 className="text-lg font-semibold text-primary">Trends</h2>
+              <p className="text-sm text-secondary">vs last 4 weeks</p>
             </div>
-            <button className="text-sm text-gray-600 hover:text-gray-900">View all</button>
+            <button className="text-sm text-secondary hover:text-primary transition-colors">View all</button>
           </div>
           <div className="grid grid-cols-3 gap-4">
             {trendMetrics.map((metric, index) => (
@@ -621,12 +660,12 @@ function App() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-gray-900">Active incidents</h2>
-              <span className="text-sm text-gray-500 font-medium">
+              <h2 className="text-lg font-semibold text-primary">Active incidents</h2>
+              <span className="text-sm text-secondary font-medium">
                 {totalIncidents}
               </span>
             </div>
-            <button className="text-sm text-gray-600 hover:text-gray-900">View all</button>
+            <button className="text-sm text-secondary hover:text-primary transition-colors">View all</button>
           </div>
 
           {/* Filters */}
@@ -653,9 +692,9 @@ function App() {
                   onSolutionUpdate={handleSolutionUpdate}
                   totalIncidents={totalIncidents}
                 />
-              ))}
-            </div>
-          </DragDropContext>
+            ))}
+          </div>
+        </DragDropContext>
         </section>
       </main>
 
