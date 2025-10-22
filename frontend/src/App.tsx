@@ -40,6 +40,7 @@ const mockBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6740',
         title: 'Summary update message failed to deliver because it was too long',
         timeElapsed: '7h 7m',
+        status: 'Triage',
         severity: 'high',
         team: 'Production',
         description: 'Summary notifications are failing to send when message length exceeds the maximum character limit. This affects automated incident summaries.',
@@ -54,6 +55,7 @@ const mockBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6710',
         title: 'Full width drawer overlapping sidebar (ONC schedules)',
         timeElapsed: '12h 54m',
+        status: 'Triage',
         severity: 'low',
         team: 'Production',
         description: 'The schedule drawer is rendering at full width causing it to overlap with the main navigation sidebar on certain screen resolutions.',
@@ -73,6 +75,7 @@ const mockBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6222',
         title: "Customer does not have slack_team_id set so announcement posts won't send",
         timeElapsed: '1h10m',
+        status: 'Investigating',
         severity: 'medium',
         team: 'Data',
         description: 'A customer configuration is missing the required slack_team_id field, preventing announcement posts from being delivered to their Slack workspace.',
@@ -87,6 +90,7 @@ const mockBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6739',
         title: 'Noisy alert regarding executor capacity on production',
         timeElapsed: '9d 3h',
+        status: 'Investigating',
         severity: 'high',
         team: 'Production',
         description: 'Production environment is generating excessive alerts about executor capacity limits. Alert threshold may need adjustment or underlying capacity issue needs investigation.',
@@ -101,6 +105,7 @@ const mockBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6735',
         title: 'At A Glance insights incorrect for 3 customers',
         timeElapsed: '1h10m',
+        status: 'Investigating',
         team: 'Production',
         description: 'Dashboard insights showing incorrect metrics for three specific customer accounts. Data aggregation query may have a bug.',
         impact: 'Three customers seeing inaccurate analytics data. Does not affect core functionality.',
@@ -119,6 +124,7 @@ const mockBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6711',
         title: 'User service high error rate',
         timeElapsed: '46m',
+        status: 'Fixing',
         severity: 'medium',
         team: 'Production',
         description: 'User authentication service experiencing elevated error rates (15% of requests). Appears to be related to database connection pooling issues.',
@@ -133,6 +139,7 @@ const mockBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6734',
         title: 'Customers report being unable to autoexport to Jira due to permission issue',
         timeElapsed: '10h 39m',
+        status: 'Fixing',
         severity: 'high',
         team: 'Data',
         description: 'Jira integration failing for multiple customers due to OAuth permission scope changes. Autoexport feature completely non-functional.',
@@ -147,6 +154,7 @@ const mockBoardState: IncidentBoardState = {
         incidentNumber: 'INC-6720',
         title: "Unable to display updates tab for four incidents with wonky 'merged' updates",
         timeElapsed: '2d 3h',
+        status: 'Fixing',
         team: 'Production',
         description: 'Four specific incidents have malformed merged update records causing the updates tab to fail rendering. Data migration script may have introduced corrupt data.',
         impact: 'Four incidents cannot display their update history. Does not affect incident management functionality.',
@@ -179,6 +187,21 @@ function App() {
   // Keep ref in sync with state
   useEffect(() => {
     modalIncidentRef.current = modalIncident;
+  }, [modalIncident]);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (modalIncident) {
+      // Save original overflow value
+      const originalOverflow = document.body.style.overflow;
+      // Lock scroll
+      document.body.style.overflow = 'hidden';
+      
+      // Cleanup: restore original overflow when modal closes
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
   }, [modalIncident]);
 
   const handleToggleExpand = (id: string) => {
@@ -494,15 +517,20 @@ function App() {
         [source.droppableId]: { ...sourceCol, items: sourceItems },
       });
     } else {
-      // Moving to a different column - update UI optimistically
-      destItems.splice(destination.index, 0, removed);
+      // Moving to a different column - update status optimistically
+      const updatedIncident = {
+        ...removed,
+        status: destination.droppableId as 'Triage' | 'Investigating' | 'Fixing',
+      };
+      
+      destItems.splice(destination.index, 0, updatedIncident);
       setBoard({
         ...board,
         [source.droppableId]: { ...sourceCol, items: sourceItems },
         [destination.droppableId]: { ...destCol, items: destItems },
       });
 
-      // Call backend API to update status
+      // Call backend API to update status (backend will create history entry and broadcast update)
       try {
         const newStatus = mapFrontendStatusToBackend(destination.droppableId);
         await api.updateIncidentStatus(removed.id, newStatus);

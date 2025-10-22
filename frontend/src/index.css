@@ -134,6 +134,8 @@ body *:not(.no-theme-transition) {
 
 .diagnosis-box .diagnosis-text {
   color: rgb(21 128 61); /* green-700 */
+  white-space: pre-wrap; /* Preserve line breaks */
+  line-height: 1.6;
 }
 
 .solution-box {
@@ -147,6 +149,8 @@ body *:not(.no-theme-transition) {
 
 .solution-box .solution-text {
   color: rgb(29 78 216); /* blue-700 */
+  white-space: pre-wrap; /* Preserve line breaks */
+  line-height: 1.6;
 }
 
 [data-theme="dark"] .diagnosis-box {
@@ -213,4 +217,23 @@ body *:not(.no-theme-transition) {
     max-height: 1000px;
     transform: translateY(0);
   }
+}
+
+/* Custom scrollbar styling for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border-color));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--text-tertiary));
 }

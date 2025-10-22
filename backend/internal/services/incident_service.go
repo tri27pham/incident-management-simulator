@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
 	wshub "github.com/tri27pham/incident-management-simulator/backend/internal/websocket"
+	"gorm.io/gorm"
 )
 
 // FullIncidentDetails wraps an incident for broadcasting
@@ -24,35 +26,121 @@ type FullIncidentDetails struct {
 }
 
 func CreateIncident(incident *models.Incident) error {
-	return db.DB.Create(incident).Error
+	// Start a transaction to ensure both incident and status history are created together
+	tx := db.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Create the incident
+	if err := tx.Create(incident).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Create initial status history entry
+	statusHistory := models.StatusHistory{
+		IncidentID: incident.ID,
+		FromStatus: nil, // NULL for initial status
+		ToStatus:   incident.Status,
+		ChangedAt:  incident.CreatedAt,
+	}
+	if err := tx.Create(&statusHistory).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
 }
 
 func GetAllIncidents() ([]models.Incident, error) {
 	var incidents []models.Incident
-	err := db.DB.Preload("Analysis").Find(&incidents).Error
+	err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		Find(&incidents).Error
 	return incidents, err
 }
 
 func GetIncidentByID(id uuid.UUID) (models.Incident, error) {
 	var incident models.Incident
-	err := db.DB.Preload("Analysis").First(&incident, id).Error
+	err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error
 	return incident, err
 }
 
 func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) {
 	var incident models.Incident
-	if err := db.DB.Preload("Analysis").First(&incident, id).Error; err != nil {
+	if err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error; err != nil {
 		return incident, err // Incident not found
 	}
 
-	incident.Status = status
-	if err := db.DB.Save(&incident).Error; err != nil {
-		return incident, err
+	// Store old status before updating
+	oldStatus := incident.Status
+
+	// Only create history entry if status actually changed
+	if oldStatus != status {
+		// Start a transaction
+		tx := db.DB.Begin()
+		defer func() {
+			if r := recover(); r != nil {
+				tx.Rollback()
+			}
+		}()
+
+		// Update incident status
+		incident.Status = status
+		if err := tx.Save(&incident).Error; err != nil {
+			tx.Rollback()
+			return incident, err
+		}
+
+		// Create status history entry
+		statusHistory := models.StatusHistory{
+			IncidentID: incident.ID,
+			FromStatus: &oldStatus,
+			ToStatus:   status,
+			ChangedAt:  time.Now(),
+		}
+		if err := tx.Create(&statusHistory).Error; err != nil {
+			tx.Rollback()
+			return incident, err
+		}
+
+		// Commit transaction
+		if err := tx.Commit().Error; err != nil {
+			return incident, err
+		}
+
+		// Reload the incident with updated status history
+		if err := db.DB.
+			Preload("Analysis").
+			Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+				return db.Order("incident_status_history.changed_at ASC")
+			}).
+			First(&incident, id).Error; err != nil {
+			return incident, err
+		}
+
+		log.Printf("✅ Updated incident %s status from %s to %s", incident.ID, oldStatus, status)
 	}
 
 	// Broadcast the status update to all connected clients
 	BroadcastIncidentUpdate(id)
-	log.Printf("Broadcasted status update for incident %s to %s", incident.ID, status)
+	log.Printf("📡 Broadcasted status update for incident %s to %s", incident.ID, status)
 
 	return incident, nil
 }

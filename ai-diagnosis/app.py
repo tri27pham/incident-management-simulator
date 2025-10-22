@@ -123,11 +123,20 @@ def call_ai_with_fallback(prompt: str) -> tuple[str, str]:
 # --- Routes ---
 @app.post("/api/v1/diagnosis", response_model=DiagnosisResponse)
 def get_diagnosis(req: IncidentRequest):
-    prompt = f"""
-    You are an AI diagnosing software incidents.
-    Given this description: "{req.description}"
-    Respond ONLY in valid JSON with keys "diagnosis" (string) and "severity" ("low"|"medium"|"high").
-    """
+    prompt = f"""Diagnose this software incident: "{req.description}"
+
+Provide 3-4 SHORT bullet points (one sentence each):
+- Root cause
+- Impact
+- Affected systems
+
+Use • symbol for bullets.
+
+Respond in JSON:
+{{
+  "diagnosis": "• [cause]\\n• [impact]\\n• [systems]",
+  "severity": "low" or "medium" or "high"
+}}"""
     
     # Try with garbage detection
     max_attempts = 2
@@ -180,11 +189,20 @@ def get_diagnosis(req: IncidentRequest):
 
 @app.post("/api/v1/suggested-fix", response_model=SuggestedFixResponse)
 def get_suggested_fix(req: IncidentRequest):
-    prompt = f"""
-    You are a Site Reliability Engineer suggesting a fix for an incident.
-    Incident: "{req.description}"
-    Respond ONLY in valid JSON with keys "suggested_fix" (string) and "confidence" (float between 0.0 and 1.0).
-    """
+    prompt = f"""Provide a fix for this incident: "{req.description}"
+
+Provide 3-4 SHORT, actionable bullet points:
+- Immediate action to take
+- How to fix it
+- How to verify it's fixed
+
+One sentence per bullet. Use • symbol.
+
+Respond in JSON:
+{{
+  "suggested_fix": "• [immediate action]\\n• [fix steps]\\n• [verification]",
+  "confidence": 0.0 to 1.0
+}}"""
     
     # Try with garbage detection
     max_attempts = 2

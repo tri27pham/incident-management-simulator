@@ -2,11 +2,17 @@ export type IncidentStatus = 'Triage' | 'Investigating' | 'Fixing';
 
 export type IncidentSeverity = 'critical' | 'high' | 'medium' | 'low' | 'minor';
 
+export interface StatusHistoryEntry {
+  status: IncidentStatus;
+  timestamp: string;
+}
+
 export interface Incident {
   id: string;
   incidentNumber: string;
   title: string;
   timeElapsed: string;
+  status: IncidentStatus;
   severity?: IncidentSeverity;
   team: string;
   avatarUrl?: string;
@@ -20,9 +26,11 @@ export interface Incident {
   diagnosisProvider?: 'gemini' | 'groq' | 'error' | 'unknown';
   solution?: string;
   solutionProvider?: 'gemini' | 'groq' | 'error' | 'unknown';
+  confidence?: number;
   hasDiagnosis?: boolean;
   hasSolution?: boolean;
   generated_by?: 'gemini' | 'groq' | 'fallback' | 'manual';
+  statusHistory?: StatusHistoryEntry[];
 }
 
 export type IncidentBoardState = {

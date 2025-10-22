@@ -1,5 +1,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 
+export interface BackendStatusHistory {
+  id: string;
+  incident_id: string;
+  from_status: string | null;
+  to_status: string;
+  changed_at: string;
+}
+
 export interface BackendIncident {
   id: string;
   message: string;
@@ -8,6 +16,7 @@ export interface BackendIncident {
   generated_by?: string;
   created_at: string;
   updated_at: string;
+  status_history?: BackendStatusHistory[];
 }
 
 export interface IncidentAnalysis {
