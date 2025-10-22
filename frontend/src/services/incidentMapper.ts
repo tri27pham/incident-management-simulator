@@ -167,6 +167,7 @@ export function mapFrontendStatusToBackend(status: string): string {
     'Triage': 'triage',
     'Investigating': 'investigating',
     'Fixing': 'fixing',
+    'Resolved': 'resolved',
   };
   return statusMap[status] || 'triage';
 }

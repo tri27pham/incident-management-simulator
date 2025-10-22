@@ -66,6 +66,15 @@ func GetAllIncidentsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, incidents)
 }
 
+func GetResolvedIncidentsHandler(c *gin.Context) {
+	incidents, err := services.GetResolvedIncidents()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch resolved incidents"})
+		return
+	}
+	c.JSON(http.StatusOK, incidents)
+}
+
 func GetIncidentByIDHandler(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)

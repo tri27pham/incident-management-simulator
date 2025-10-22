@@ -34,14 +34,14 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
     onOpenModal(item);
   };
 
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<number | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   // Set up timeout for auto-diagnosis
   useEffect(() => {
     if (!item.hasDiagnosis && !item.hasSolution && isWaitingForAutoDiagnosis) {
       // Wait 10 seconds for diagnosis/solution to arrive via WebSocket
-      timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = window.setTimeout(() => {
         setIsWaitingForAutoDiagnosis(false);
       }, 10000); // 10 second timeout
     } else if (item.hasDiagnosis || item.hasSolution) {
@@ -63,7 +63,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
   useEffect(() => {
     if (isExpanded && cardRef.current) {
       // Delay to allow the expand animation to complete
-      setTimeout(() => {
+      window.setTimeout(() => {
         cardRef.current?.scrollIntoView({ 
           behavior: 'smooth', 
           block: 'center',

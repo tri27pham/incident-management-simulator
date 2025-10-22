@@ -35,11 +35,20 @@ export interface IncidentWithAnalysis extends BackendIncident {
   analysis?: IncidentAnalysis;
 }
 
-// Fetch all incidents
+// Fetch all incidents (excluding resolved)
 export async function fetchIncidents(): Promise<BackendIncident[]> {
   const response = await fetch(`${API_BASE_URL}/incidents`);
   if (!response.ok) {
     throw new Error('Failed to fetch incidents');
+  }
+  return response.json();
+}
+
+// Fetch resolved incidents
+export async function fetchResolvedIncidents(): Promise<BackendIncident[]> {
+  const response = await fetch(`${API_BASE_URL}/incidents/resolved`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch resolved incidents');
   }
   return response.json();
 }

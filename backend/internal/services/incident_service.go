@@ -62,6 +62,20 @@ func GetAllIncidents() ([]models.Incident, error) {
 		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
 			return db.Order("incident_status_history.changed_at ASC")
 		}).
+		Where("status != ?", "resolved").
+		Find(&incidents).Error
+	return incidents, err
+}
+
+func GetResolvedIncidents() ([]models.Incident, error) {
+	var incidents []models.Incident
+	err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		Where("status = ?", "resolved").
+		Order("updated_at DESC").
 		Find(&incidents).Error
 	return incidents, err
 }

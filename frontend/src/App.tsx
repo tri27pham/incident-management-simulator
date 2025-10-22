@@ -421,7 +421,8 @@ function App() {
               setModalIncident(updatedIncident);
             }
           } else {
-            // Add to resolved incidents list
+            // Incident is being resolved - it will be fetched from backend on next load
+            // For immediate UI update, add to resolved list
             setResolvedIncidents((prev) => [incident, ...prev]);
             
             // Close modal if incident is resolved
@@ -444,9 +445,14 @@ function App() {
     async function loadIncidents() {
       try {
         setLoading(true);
-        const backendIncidents = await api.fetchIncidents();
         
-        // Group incidents by status
+        // Fetch active and resolved incidents in parallel
+        const [backendIncidents, backendResolvedIncidents] = await Promise.all([
+          api.fetchIncidents(),
+          api.fetchResolvedIncidents(),
+        ]);
+        
+        // Group active incidents by status
         const newBoard: IncidentBoardState = {
           Triage: { name: 'Triage', items: [] },
           Investigating: { name: 'Investigating', items: [] },
@@ -459,7 +465,11 @@ function App() {
           newBoard[status].items.push(incident);
         });
 
+        // Map resolved incidents
+        const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
+
         setBoard(newBoard);
+        setResolvedIncidents(resolved);
         setError(null);
       } catch (err) {
         console.error('Failed to fetch incidents:', err);
