@@ -12,6 +12,8 @@ interface IncidentColumnProps {
   expandedCardId: string | null;
   onToggleExpand: (id: string) => void;
   onOpenModal: (incident: Incident) => void;
+  onDiagnosisUpdate: (id: string, diagnosis: string) => void;
+  onSolutionUpdate: (id: string, solution: string) => void;
   totalIncidents: number;
 }
 
@@ -27,7 +29,7 @@ const statusProgressColors = {
   Fixing: 'text-red-500',
 };
 
-export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpand, onOpenModal, totalIncidents }: IncidentColumnProps) {
+export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpand, onOpenModal, onDiagnosisUpdate, onSolutionUpdate, totalIncidents }: IncidentColumnProps) {
   const colorClass = statusColors[column.name as keyof typeof statusColors] || 'text-gray-600';
   const progressColor = statusProgressColors[column.name as keyof typeof statusProgressColors] || 'text-gray-600';
   const percentage = totalIncidents > 0 ? (column.items.length / totalIncidents) * 100 : 0;
@@ -60,6 +62,8 @@ export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpan
                 isExpanded={expandedCardId === item.id}
                 onToggleExpand={onToggleExpand}
                 onOpenModal={onOpenModal}
+                onDiagnosisUpdate={onDiagnosisUpdate}
+                onSolutionUpdate={onSolutionUpdate}
               />
             ))}
             {provided.placeholder}

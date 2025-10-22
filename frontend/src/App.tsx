@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { DragDropContext, DropResult } from 'react-beautiful-dnd';
 import { IncidentBoardState, TrendMetric, Incident, IncidentSeverity } from './types';
 import { IncidentColumn } from './components/IncidentColumn';
 import { TrendCard } from './components/TrendCard';
 import { IncidentModal } from './components/IncidentModal';
 import { FilterBar } from './components/FilterBar';
+import * as api from './services/api';
+import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
 
 const trendMetrics: TrendMetric[] = [
   { label: 'Critical incidents', value: '+27%', change: 27, isPositive: true },
@@ -12,7 +14,23 @@ const trendMetrics: TrendMetric[] = [
   { label: 'Overnight work (11pm-8am)', value: '+14%', change: 14, isPositive: true },
 ];
 
-const initialBoardState: IncidentBoardState = {
+const emptyBoardState: IncidentBoardState = {
+  Triage: {
+    name: 'Triage',
+    items: [],
+  },
+  Investigating: {
+    name: 'Investigating',
+    items: [],
+  },
+  Fixing: {
+    name: 'Fixing',
+    items: [],
+  },
+};
+
+// Keep mock data as fallback
+const mockBoardState: IncidentBoardState = {
   Triage: {
     name: 'Triage',
     items: [
@@ -142,11 +160,16 @@ const initialBoardState: IncidentBoardState = {
 
 
 function App() {
-  const [board, setBoard] = useState(initialBoardState);
+  const [board, setBoard] = useState(emptyBoardState);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [modalIncident, setModalIncident] = useState<Incident | null>(null);
   const [selectedSeverities, setSelectedSeverities] = useState<IncidentSeverity[]>([]);
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatorRunning, setGeneratorRunning] = useState(false);
+  const [isTogglingGenerator, setIsTogglingGenerator] = useState(false);
 
   const handleToggleExpand = (id: string) => {
     setExpandedCardId(expandedCardId === id ? null : id);
@@ -177,14 +200,212 @@ function App() {
     setSelectedTeams([]);
   };
 
+  const handleGenerateIncident = async () => {
+    setIsGenerating(true);
+    try {
+      await api.generateRandomIncident();
+      // WebSocket will handle the update automatically
+      console.log('✅ Incident generated successfully');
+    } catch (error) {
+      console.error('Failed to generate incident:', error);
+      setError('Failed to generate incident');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleToggleGenerator = async () => {
+    setIsTogglingGenerator(true);
+    try {
+      if (generatorRunning) {
+        await api.stopGenerator();
+        setGeneratorRunning(false);
+        console.log('✅ Generator stopped');
+      } else {
+        await api.startGenerator();
+        setGeneratorRunning(true);
+        console.log('✅ Generator started');
+      }
+    } catch (error) {
+      console.error('Failed to toggle generator:', error);
+      setError(`Failed to ${generatorRunning ? 'stop' : 'start'} generator`);
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsTogglingGenerator(false);
+    }
+  };
+
+  // Check generator status on mount
+  useEffect(() => {
+    async function checkGeneratorStatus() {
+      try {
+        const status = await api.getGeneratorStatus();
+        setGeneratorRunning(status.is_running);
+      } catch (error) {
+        console.error('Failed to check generator status:', error);
+      }
+    }
+    checkGeneratorStatus();
+  }, []);
+
+  const handleDiagnosisUpdate = (id: string, diagnosis: string) => {
+    setBoard((prevBoard) => {
+      // Find and update the incident across all columns
+      const newBoard = { ...prevBoard };
+      
+      for (const columnKey in newBoard) {
+        const column = newBoard[columnKey as keyof typeof newBoard];
+        const itemIndex = column.items.findIndex((item) => item.id === id);
+        
+        if (itemIndex !== -1) {
+          // Create new items array with updated incident
+          const updatedItems = [...column.items];
+          updatedItems[itemIndex] = {
+            ...updatedItems[itemIndex],
+            diagnosis,
+            hasDiagnosis: true,
+          };
+          
+          newBoard[columnKey as keyof typeof newBoard] = {
+            ...column,
+            items: updatedItems,
+          };
+          
+          // Update modal if it's open for this incident
+          if (modalIncident?.id === id) {
+            setModalIncident({
+              ...modalIncident,
+              diagnosis,
+              hasDiagnosis: true,
+            });
+          }
+          
+          break;
+        }
+      }
+      
+      return newBoard;
+    });
+  };
+
+  const handleSolutionUpdate = (id: string, solution: string) => {
+    setBoard((prevBoard) => {
+      // Find and update the incident across all columns
+      const newBoard = { ...prevBoard };
+      
+      for (const columnKey in newBoard) {
+        const column = newBoard[columnKey as keyof typeof newBoard];
+        const itemIndex = column.items.findIndex((item) => item.id === id);
+        
+        if (itemIndex !== -1) {
+          // Create new items array with updated incident
+          const updatedItems = [...column.items];
+          updatedItems[itemIndex] = {
+            ...updatedItems[itemIndex],
+            solution,
+            hasSolution: true,
+          };
+          
+          newBoard[columnKey as keyof typeof newBoard] = {
+            ...column,
+            items: updatedItems,
+          };
+          
+          // Update modal if it's open for this incident
+          if (modalIncident?.id === id) {
+            setModalIncident({
+              ...modalIncident,
+              solution,
+              hasSolution: true,
+            });
+          }
+          
+          break;
+        }
+      }
+      
+      return newBoard;
+    });
+  };
+
+  // Fetch incidents from backend on mount
+  useEffect(() => {
+    async function loadIncidents() {
+      try {
+        setLoading(true);
+        const backendIncidents = await api.fetchIncidents();
+        
+        // Group incidents by status
+        const newBoard: IncidentBoardState = {
+          Triage: { name: 'Triage', items: [] },
+          Investigating: { name: 'Investigating', items: [] },
+          Fixing: { name: 'Fixing', items: [] },
+        };
+
+        backendIncidents.forEach((backendIncident) => {
+          const incident = mapBackendIncidentToFrontend(backendIncident);
+          const status = mapBackendStatusToFrontend(backendIncident.status);
+          newBoard[status].items.push(incident);
+        });
+
+        setBoard(newBoard);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch incidents:', err);
+        setError('Failed to load incidents. Using mock data.');
+        // Fallback to mock data
+        setBoard(mockBoardState);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadIncidents();
+  }, []);
+
+  // Set up WebSocket connection for real-time updates
+  useEffect(() => {
+    const ws = api.connectWebSocket((data) => {
+      console.log('WebSocket message received:', data);
+      
+      // Update the board with new/updated incident
+      setBoard((prevBoard) => {
+        const incident = mapBackendIncidentToFrontend(data);
+        const status = mapBackendStatusToFrontend(data.status);
+        
+        // Update modal if it's open for this incident
+        if (modalIncident?.id === incident.id) {
+          setModalIncident(incident);
+        }
+        
+        // Remove incident from all columns first
+        const newBoard: IncidentBoardState = {
+          Triage: { ...prevBoard.Triage, items: prevBoard.Triage.items.filter(i => i.id !== incident.id) },
+          Investigating: { ...prevBoard.Investigating, items: prevBoard.Investigating.items.filter(i => i.id !== incident.id) },
+          Fixing: { ...prevBoard.Fixing, items: prevBoard.Fixing.items.filter(i => i.id !== incident.id) },
+        };
+        
+        // Add to correct column
+        newBoard[status].items.push(incident);
+        
+        return newBoard;
+      });
+    });
+
+    return () => {
+      ws.close();
+    };
+  }, [modalIncident]);
+
   // Get all unique teams
   const availableTeams = useMemo(() => {
     const teams = new Set<string>();
-    Object.values(initialBoardState).forEach((column) => {
+    Object.values(board).forEach((column) => {
       column.items.forEach((item) => teams.add(item.team));
     });
     return Array.from(teams).sort();
-  }, []);
+  }, [board]);
 
   // Filter incidents based on selected filters
   const filteredBoard = useMemo(() => {
@@ -214,7 +435,7 @@ function App() {
 
   const totalIncidents = Object.values(filteredBoard).reduce((sum, col) => sum + col.items.length, 0);
 
-  const onDragEnd = (result: DropResult) => {
+  const onDragEnd = async (result: DropResult) => {
     const { source, destination } = result;
     if (!destination) return;
 
@@ -232,15 +453,44 @@ function App() {
         [source.droppableId]: { ...sourceCol, items: sourceItems },
       });
     } else {
-      // Moving to a different column
+      // Moving to a different column - update UI optimistically
       destItems.splice(destination.index, 0, removed);
       setBoard({
         ...board,
         [source.droppableId]: { ...sourceCol, items: sourceItems },
         [destination.droppableId]: { ...destCol, items: destItems },
       });
+
+      // Call backend API to update status
+      try {
+        const newStatus = mapFrontendStatusToBackend(destination.droppableId);
+        await api.updateIncidentStatus(removed.id, newStatus);
+        console.log(`✅ Updated incident ${removed.id} to status ${newStatus}`);
+      } catch (error) {
+        console.error('Failed to update incident status:', error);
+        // Revert the change on error
+        const revertedSourceItems = [...sourceItems];
+        revertedSourceItems.splice(source.index, 0, removed);
+        const revertedDestItems = destItems.filter(item => item.id !== removed.id);
+        setBoard({
+          ...board,
+          [source.droppableId]: { ...sourceCol, items: revertedSourceItems },
+          [destination.droppableId]: { ...destCol, items: revertedDestItems },
+        });
+      }
     }
   };
+
+  if (loading) {
+    return (
+      <div className="bg-white min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading incidents...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white min-h-screen">
@@ -250,11 +500,64 @@ function App() {
           <div className="flex items-center gap-3">
             <span className="text-2xl">🏠</span>
             <h1 className="text-xl font-semibold text-gray-900">Home</h1>
+            {error && (
+              <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                {error}
+              </span>
+            )}
           </div>
-          <button className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors flex items-center gap-2">
-            <span>🔥</span>
-            Declare incident
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleGenerateIncident}
+              disabled={isGenerating}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <span>⚡</span>
+                  Generate Incident
+                </>
+              )}
+            </button>
+            
+            <button 
+              onClick={handleToggleGenerator}
+              disabled={isTogglingGenerator}
+              className={`${
+                generatorRunning 
+                  ? 'bg-red-600 hover:bg-red-700' 
+                  : 'bg-green-600 hover:bg-green-700'
+              } text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {isTogglingGenerator ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {generatorRunning ? 'Stopping...' : 'Starting...'}
+                </>
+              ) : generatorRunning ? (
+                <>
+                  <span>⏸</span>
+                  Stop Generator
+                </>
+              ) : (
+                <>
+                  <span>▶</span>
+                  Start Generator
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -307,6 +610,8 @@ function App() {
                   expandedCardId={expandedCardId}
                   onToggleExpand={handleToggleExpand}
                   onOpenModal={handleOpenModal}
+                  onDiagnosisUpdate={handleDiagnosisUpdate}
+                  onSolutionUpdate={handleSolutionUpdate}
                   totalIncidents={totalIncidents}
                 />
               ))}

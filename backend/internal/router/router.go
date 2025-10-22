@@ -40,6 +40,7 @@ func SetupRouter() *gin.Engine {
 		// Incident routes
 		api.GET("/incidents", handlers.GetAllIncidentsHandler)
 		api.POST("/incidents", handlers.CreateIncidentHandler)
+		api.POST("/incidents/generate", handlers.GenerateRandomIncidentHandler)
 		api.GET("/incidents/:id", handlers.GetIncidentByIDHandler)
 		api.PATCH("/incidents/:id", handlers.UpdateIncidentHandler)
 		api.POST("/incidents/:id/diagnose", handlers.TriggerAIDiagnosisHandler)

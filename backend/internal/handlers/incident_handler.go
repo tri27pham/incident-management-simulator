@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -126,6 +127,9 @@ func TriggerAIDiagnosisHandler(c *gin.Context) {
 		return
 	}
 
+	// Broadcast the updated incident with diagnosis to all connected clients
+	services.BroadcastIncidentUpdate(id)
+
 	c.JSON(http.StatusOK, analysis)
 }
 
@@ -143,5 +147,26 @@ func TriggerAISuggestedFixHandler(c *gin.Context) {
 		return
 	}
 
+	// Broadcast the updated incident with solution to all connected clients
+	services.BroadcastIncidentUpdate(id)
+
 	c.JSON(http.StatusOK, analysis)
+}
+
+func GenerateRandomIncidentHandler(c *gin.Context) {
+	incident, err := services.GenerateRandomIncident()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate incident: %v", err)})
+		return
+	}
+
+	if err := services.CreateIncident(&incident); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create incident"})
+		return
+	}
+
+	// Start the AI analysis pipeline in the background
+	go services.RunFullAnalysisPipeline(incident)
+
+	c.JSON(http.StatusCreated, incident)
 }

@@ -1,0 +1,21 @@
+INFO:     Started server process [54042]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:54521 - "GET /api/v1/health HTTP/1.1" 200 OK
+Gemini API SDK error: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'The model is overloaded. Please try again later.', 'status': 'UNAVAILABLE'}}
+⚠️  Gemini failed: Gemini API is currently overloaded
+✅ Used Groq API (fallback)
+INFO:     127.0.0.1:54527 - "POST /api/v1/diagnosis HTTP/1.1" 200 OK
+Gemini API SDK error: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'The model is overloaded. Please try again later.', 'status': 'UNAVAILABLE'}}
+⚠️  Gemini failed: Gemini API is currently overloaded
+✅ Used Groq API (fallback)
+INFO:     127.0.0.1:54527 - "POST /api/v1/diagnosis HTTP/1.1" 200 OK
+✅ Used Gemini API
+INFO:     127.0.0.1:54536 - "POST /api/v1/diagnosis HTTP/1.1" 200 OK
+✅ Used Gemini API
+INFO:     127.0.0.1:54547 - "POST /api/v1/diagnosis HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [54042]
