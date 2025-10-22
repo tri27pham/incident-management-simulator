@@ -128,7 +128,7 @@ export function mapBackendIncidentToFrontend(
     timeElapsed,
     severity: analysis ? mapSeverity(analysis.severity) : undefined,
     team,
-    description: hasValidDiagnosis && analysis ? analysis.diagnosis : undefined,
+    description: hasValidDiagnosis && analysis ? analysis.diagnosis : undefined, // Diagnosis IS the description
     impact: analysis && hasValidDiagnosis && analysis.confidence !== undefined ? `Confidence: ${(analysis.confidence * 100).toFixed(0)}%` : undefined,
     affectedServices: backendIncident.source ? [backendIncident.source] : [],
     assignee: undefined,

@@ -38,12 +38,6 @@ func WebSocketHandler(c *gin.Context) {
 	// as the primary flow is server-to-client updates.
 }
 
-// FullIncidentDetails is a temporary struct to combine incident and its analysis for broadcasting
-type FullIncidentDetails struct {
-	models.Incident
-	Analysis *models.IncidentAnalysis `json:"analysis,omitempty"`
-}
-
 func CreateIncidentHandler(c *gin.Context) {
 	var incident models.Incident
 	if err := c.ShouldBindJSON(&incident); err != nil {

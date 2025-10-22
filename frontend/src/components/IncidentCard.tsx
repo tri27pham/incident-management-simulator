@@ -169,11 +169,6 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
           {/* Expanded Content */}
           {isExpanded && (
             <div className="mb-3 pb-3 border-b border-gray-200 space-y-2">
-              {item.description && (
-                <p className="text-xs text-gray-600 line-clamp-2">
-                  {item.description}
-                </p>
-              )}
               {item.affectedServices && item.affectedServices.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {item.affectedServices.slice(0, 2).map((service, idx) => (

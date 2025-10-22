@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { DragDropContext, DropResult } from 'react-beautiful-dnd';
 import { IncidentBoardState, TrendMetric, Incident, IncidentSeverity } from './types';
 import { IncidentColumn } from './components/IncidentColumn';
@@ -170,6 +170,14 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatorRunning, setGeneratorRunning] = useState(false);
   const [isTogglingGenerator, setIsTogglingGenerator] = useState(false);
+  
+  // Use a ref to avoid WebSocket reconnections when modal changes
+  const modalIncidentRef = useRef<Incident | null>(null);
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    modalIncidentRef.current = modalIncident;
+  }, [modalIncident]);
 
   const handleToggleExpand = (id: string) => {
     setExpandedCardId(expandedCardId === id ? null : id);
@@ -367,18 +375,21 @@ function App() {
   // Set up WebSocket connection for real-time updates
   useEffect(() => {
     const ws = api.connectWebSocket((data) => {
-      console.log('WebSocket message received:', data);
+      console.log('📨 WebSocket message received:', data);
+      
+      const incident = mapBackendIncidentToFrontend(data);
+      const status = mapBackendStatusToFrontend(data.status);
+      
+      console.log(`✨ Processing incident ${incident.incidentNumber} -> ${status}`);
+      
+      // Update modal if it's open for this incident (use ref to avoid reconnection)
+      if (modalIncidentRef.current?.id === incident.id) {
+        setModalIncident(incident);
+        console.log('🔄 Updated modal incident');
+      }
       
       // Update the board with new/updated incident
       setBoard((prevBoard) => {
-        const incident = mapBackendIncidentToFrontend(data);
-        const status = mapBackendStatusToFrontend(data.status);
-        
-        // Update modal if it's open for this incident
-        if (modalIncident?.id === incident.id) {
-          setModalIncident(incident);
-        }
-        
         // Remove incident from all columns first
         const newBoard: IncidentBoardState = {
           Triage: { ...prevBoard.Triage, items: prevBoard.Triage.items.filter(i => i.id !== incident.id) },
@@ -388,15 +399,17 @@ function App() {
         
         // Add to correct column
         newBoard[status].items.push(incident);
+        console.log(`✅ Added incident ${incident.incidentNumber} to ${status} column`);
         
         return newBoard;
       });
     });
 
     return () => {
+      console.log('🔌 Closing WebSocket connection');
       ws.close();
     };
-  }, [modalIncident]);
+  }, []); // Empty dependencies - WebSocket stays connected for the app lifetime
 
   // Get all unique teams
   const availableTeams = useMemo(() => {
@@ -622,7 +635,11 @@ function App() {
 
       {/* Modal */}
       {modalIncident && (
-        <IncidentModal incident={modalIncident} onClose={handleCloseModal} />
+        <IncidentModal 
+          incident={modalIncident} 
+          onClose={handleCloseModal}
+          onSolutionUpdate={handleSolutionUpdate}
+        />
       )}
     </div>
   );

@@ -7,11 +7,22 @@ from groq import Groq
 
 load_dotenv()
 
-app = FastAPI(title="AI Diagnosis Service (Gemini → Groq Fallback)", version="2.0")
+app = FastAPI(title="AI Diagnosis Service (Groq → Gemini Fallback)", version="2.0")
 
 # Initialize AI clients
-gemini_client = genai.Client()
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY")) if os.getenv("GROQ_API_KEY") else None
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY")
+
+gemini_client = genai.Client() if gemini_api_key else None
+groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
+
+# Log which AI services are available
+if groq_client:
+    print("✅ Groq API configured (PRIMARY)")
+if gemini_client:
+    print("✅ Gemini API configured (FALLBACK)")
+if not groq_client and not gemini_client:
+    print("⚠️  WARNING: No AI API keys configured!")
 
 # --- Data Models ---
 class IncidentRequest(BaseModel):
@@ -39,6 +50,9 @@ def clean_json_string(s: str) -> str:
 
 def call_gemini(prompt: str) -> str:
     """Calls the Gemini API using the SDK's client.models.generate_content method."""
+    if not gemini_client:
+        raise Exception("Gemini API key not configured")
+    
     try:
         response = gemini_client.models.generate_content(
             model="gemini-2.5-flash",
@@ -80,24 +94,30 @@ def call_groq(prompt: str) -> str:
         raise Exception(f"Groq API error: {error_str}")
 
 def call_ai_with_fallback(prompt: str) -> tuple[str, str]:
-    """Tries Gemini first, falls back to Groq if it fails. Returns (result, provider)."""
-    # Try Gemini first
-    try:
-        result = call_gemini(prompt)
-        print("✅ Used Gemini API")
-        return (result, "gemini")
-    except Exception as gemini_error:
-        print(f"⚠️  Gemini failed: {gemini_error}")
-        
-        # Try Groq as fallback
+    """Tries Groq first, falls back to Gemini if it fails. Returns (result, provider)."""
+    # Try Groq first (PRIMARY)
+    if groq_client:
         try:
             result = call_groq(prompt)
-            print("✅ Used Groq API (fallback)")
+            print("✅ Used Groq API (primary)")
             return (result, "groq")
         except Exception as groq_error:
-            print(f"❌ Groq also failed: {groq_error}")
-            # Return error JSON for backend to handle
-            return ('{"error":"All AI services unavailable. Please try again later."}', "error")
+            print(f"⚠️  Groq failed: {groq_error}")
+    
+    # Try Gemini as fallback (SECONDARY)
+    if gemini_client:
+        try:
+            result = call_gemini(prompt)
+            print("✅ Used Gemini API (fallback)")
+            return (result, "gemini")
+        except Exception as gemini_error:
+            print(f"❌ Gemini also failed: {gemini_error}")
+    
+    # If both failed or neither is configured
+    if not groq_client and not gemini_client:
+        return ('{"error":"No AI services configured. Please set GROQ_API_KEY or GEMINI_API_KEY."}', "error")
+    else:
+        return ('{"error":"All AI services unavailable. Please try again later."}', "error")
 
 
 # --- Routes ---

@@ -20,6 +20,7 @@ import (
 // The embedded Incident already includes Analysis via the foreign key relationship
 type FullIncidentDetails struct {
 	models.Incident
+	// Note: models.Incident already has Analysis field, no need to duplicate it
 }
 
 func CreateIncident(incident *models.Incident) error {
@@ -67,6 +68,15 @@ func BroadcastIncidentUpdate(id uuid.UUID) {
 	details := FullIncidentDetails{
 		Incident: incident,
 	}
+
+	// Debug: Log if analysis is present
+	if incident.Analysis != nil {
+		log.Printf("📡 Broadcasting incident %s with Analysis (diagnosis: %d chars, solution: %d chars)",
+			id.String()[:8], len(incident.Analysis.Diagnosis), len(incident.Analysis.Solution))
+	} else {
+		log.Printf("📡 Broadcasting incident %s without Analysis", id.String()[:8])
+	}
+
 	wshub.WSHub.Broadcast <- details
 }
 
@@ -75,13 +85,13 @@ func RunFullAnalysisPipeline(incident models.Incident) {
 	// Step 1: Immediately broadcast the newly created incident
 	detailsNew := FullIncidentDetails{Incident: incident}
 	wshub.WSHub.Broadcast <- detailsNew
-	log.Printf("Broadcasted new incident %s", incident.ID)
+	log.Printf("📡 Broadcasted new incident %s (no analysis yet)", incident.ID.String()[:8])
 
 	// Step 2: Trigger Diagnosis
-	log.Printf("Starting analysis pipeline for incident %s", incident.ID)
+	log.Printf("🔬 Starting analysis pipeline for incident %s", incident.ID.String()[:8])
 	_, err := TriggerAIDiagnosis(incident.ID)
 	if err != nil {
-		log.Printf("Error in AI diagnosis for incident %s: %v", incident.ID, err)
+		log.Printf("❌ Error in AI diagnosis for incident %s: %v", incident.ID.String()[:8], err)
 		return // End the pipeline if diagnosis fails
 	}
 
@@ -91,6 +101,12 @@ func RunFullAnalysisPipeline(incident models.Incident) {
 	detailsWithDiagnosis := FullIncidentDetails{
 		Incident: incidentWithStatus,
 	}
+
+	if incidentWithStatus.Analysis != nil {
+		log.Printf("📡 Broadcasting incident %s WITH diagnosis (provider: %s)",
+			incident.ID.String()[:8], incidentWithStatus.Analysis.DiagnosisProvider)
+	}
+
 	wshub.WSHub.Broadcast <- detailsWithDiagnosis
 	log.Printf("Broadcasted diagnosis update for incident %s", incident.ID)
 
