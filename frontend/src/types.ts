@@ -3,7 +3,7 @@ export type IncidentStatus = 'Triage' | 'Investigating' | 'Fixing';
 export type IncidentSeverity = 'critical' | 'high' | 'medium' | 'low' | 'minor';
 
 export interface StatusHistoryEntry {
-  status: IncidentStatus;
+  status: IncidentStatus | 'Resolved';
   timestamp: string;
 }
 
