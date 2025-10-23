@@ -69,8 +69,13 @@ export function FilterBar({
           className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors ${
             selectedSeverities.length > 0
               ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              : ''
           }`}
+          style={selectedSeverities.length === 0 ? {
+            backgroundColor: `rgb(var(--card-bg))`,
+            borderColor: `rgb(var(--border-color))`,
+            color: `rgb(var(--text-primary))`
+          } : {}}
         >
           {getSeverityLabel()}
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -79,7 +84,10 @@ export function FilterBar({
         </button>
 
         {severityOpen && (
-          <div className="absolute z-10 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg">
+          <div className="absolute z-10 mt-2 w-56 rounded-lg shadow-lg" style={{
+            backgroundColor: `rgb(var(--card-bg))`,
+            border: `1px solid rgb(var(--border-color))`
+          }}>
             <div className="p-2">
               {severityOptions.map((severity) => {
                 const isSelected = selectedSeverities.includes(severity.value);
@@ -110,8 +118,13 @@ export function FilterBar({
           className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors ${
             selectedTeams.length > 0
               ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              : ''
           }`}
+          style={selectedTeams.length === 0 ? {
+            backgroundColor: `rgb(var(--card-bg))`,
+            borderColor: `rgb(var(--border-color))`,
+            color: `rgb(var(--text-primary))`
+          } : {}}
         >
           {getTeamLabel()}
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -120,7 +133,10 @@ export function FilterBar({
         </button>
 
         {teamOpen && (
-          <div className="absolute z-10 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg">
+          <div className="absolute z-10 mt-2 w-56 rounded-lg shadow-lg" style={{
+            backgroundColor: `rgb(var(--card-bg))`,
+            border: `1px solid rgb(var(--border-color))`
+          }}>
             <div className="p-2">
               {availableTeams.map((team) => {
                 const isSelected = selectedTeams.includes(team);
@@ -130,7 +146,7 @@ export function FilterBar({
                     onClick={() => onTeamToggle(team)}
                     className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-50 text-sm"
                   >
-                    <span className="text-gray-700 font-medium">{team}</span>
+                    <span className="font-medium" style={{ color: 'white' }}>{team}</span>
                     {isSelected && (
                       <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -148,7 +164,7 @@ export function FilterBar({
       {hasActiveFilters && (
         <button
           onClick={onClearFilters}
-          className="text-sm text-gray-600 hover:text-gray-900 ml-2"
+          className="text-sm ml-2 transition-colors text-secondary hover:text-primary"
         >
           Clear filters
         </button>

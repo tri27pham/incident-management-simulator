@@ -4,6 +4,9 @@ import requests
 import json
 import random
 import re
+import threading
+from flask import Flask, jsonify
+from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
 
@@ -16,6 +19,14 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 # Get the backend URL from an environment variable, with a fallback for local dev
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
 INCIDENTS_ENDPOINT = f"{BACKEND_URL}/api/v1/incidents"
+
+app = Flask(__name__)
+CORS(app)
+
+# Global state
+generator_thread = None
+is_running = False
+stop_flag = threading.Event()
 
 def clean_json_string(s: str) -> str:
     """Removes markdown code fences and whitespace from a string to extract raw JSON."""
@@ -60,23 +71,74 @@ def report_incident(incident_data: dict):
     except requests.exceptions.RequestException as e:
         print(f"❌ Failed to report incident to backend: {e}")
 
-def main():
-    """Main loop to generate and report incidents periodically."""
-    print("🚀 Incident Generator started. Press Ctrl+C to stop.")
-    print(f"➡️ Reporting incidents to: {INCIDENTS_ENDPOINT}")
+def generation_loop():
+    """Background thread loop to generate and report incidents periodically."""
+    global is_running
+    print("🚀 Incident Generator loop started.")
+    print(f"➡️ Using backend incident generation: {BACKEND_URL}/api/v1/incidents/generate")
     
-    # Wait for a few seconds before starting to give the backend time to initialize
-    time.sleep(10)
-    
-    while True:
-        incident = generate_incident()
-        if incident:
-            report_incident(incident)
+    while not stop_flag.is_set():
+        # Call the backend's generate endpoint instead of generating locally
+        # This uses the ai-diagnosis service with Groq → Gemini fallback
+        try:
+            response = requests.post(f"{BACKEND_URL}/api/v1/incidents/generate", timeout=30)
+            if response.status_code == 201:
+                incident_data = response.json()
+                print(f"✅ Generated incident via backend: {incident_data.get('message', 'Unknown')[:50]}...")
+            else:
+                print(f"⚠️  Backend generation failed: {response.status_code}")
+        except Exception as e:
+            print(f"❌ Error generating incident: {e}")
         
         # Wait for a random interval before generating the next incident
-        sleep_duration = random.randint(15, 45)
+        # Check stop_flag more frequently to be responsive
+        sleep_duration = random.randint(30, 90)
         print(f"🕒 Waiting for {sleep_duration} seconds...")
-        time.sleep(sleep_duration)
+        
+        for _ in range(sleep_duration):
+            if stop_flag.is_set():
+                break
+            time.sleep(1)
+    
+    is_running = False
+    print("🛑 Incident Generator loop stopped.")
+
+@app.route('/api/start', methods=['POST'])
+def start_generator():
+    """Start the incident generator in a background thread."""
+    global generator_thread, is_running, stop_flag
+    
+    if is_running:
+        return jsonify({"status": "already_running", "message": "Generator is already running"}), 200
+    
+    stop_flag.clear()
+    is_running = True
+    generator_thread = threading.Thread(target=generation_loop, daemon=True)
+    generator_thread.start()
+    
+    return jsonify({"status": "started", "message": "Incident generator started"}), 200
+
+@app.route('/api/stop', methods=['POST'])
+def stop_generator():
+    """Stop the incident generator."""
+    global is_running, stop_flag
+    
+    if not is_running:
+        return jsonify({"status": "not_running", "message": "Generator is not running"}), 200
+    
+    stop_flag.set()
+    return jsonify({"status": "stopped", "message": "Incident generator stopping..."}), 200
+
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    """Get the current status of the generator."""
+    return jsonify({"is_running": is_running}), 200
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint."""
+    return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
-    main()
+    print("🎮 Incident Generator API starting on port 9000...")
+    app.run(host='0.0.0.0', port=9000, debug=False)

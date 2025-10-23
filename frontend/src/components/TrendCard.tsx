@@ -10,11 +10,11 @@ export function TrendCard({ metric }: TrendCardProps) {
   const arrow = metric.isPositive ? '↗' : '↘';
 
   return (
-    <div className={`${bgColor} rounded-lg p-4`}>
-      <p className="text-sm text-gray-600 mb-1">{metric.label}</p>
+    <div className={`${bgColor} rounded-lg p-4 bg-card`} style={{ backgroundColor: `rgb(var(--card-bg))` }}>
+      <p className="text-sm mb-1" style={{ color: `rgb(var(--card-text-secondary))` }}>{metric.label}</p>
       <div className="flex items-center gap-2">
         <span className={`${textColor} text-sm font-medium`}>{arrow}</span>
-        <span className="text-2xl font-bold text-gray-900">{metric.value}</span>
+        <span className="text-2xl font-bold" style={{ color: `rgb(var(--card-text-primary))` }}>{metric.value}</span>
       </div>
     </div>
   );

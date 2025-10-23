@@ -12,14 +12,10 @@ interface IncidentColumnProps {
   expandedCardId: string | null;
   onToggleExpand: (id: string) => void;
   onOpenModal: (incident: Incident) => void;
+  onDiagnosisUpdate: (id: string, diagnosis: string) => void;
+  onSolutionUpdate: (id: string, solution: string) => void;
   totalIncidents: number;
 }
-
-const statusColors = {
-  Triage: 'text-gray-900',
-  Investigating: 'text-gray-900',
-  Fixing: 'text-gray-900',
-};
 
 const statusProgressColors = {
   Triage: 'text-blue-500',
@@ -27,19 +23,18 @@ const statusProgressColors = {
   Fixing: 'text-red-500',
 };
 
-export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpand, onOpenModal, totalIncidents }: IncidentColumnProps) {
-  const colorClass = statusColors[column.name as keyof typeof statusColors] || 'text-gray-600';
+export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpand, onOpenModal, onDiagnosisUpdate, onSolutionUpdate, totalIncidents }: IncidentColumnProps) {
   const progressColor = statusProgressColors[column.name as keyof typeof statusProgressColors] || 'text-gray-600';
   const percentage = totalIncidents > 0 ? (column.items.length / totalIncidents) * 100 : 0;
 
   return (
-    <div className="bg-gray-50 rounded-lg p-4">
+    <div className="bg-tertiary rounded-lg p-4" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
       <div className="flex items-center gap-2 mb-4">
         <CircularProgress percentage={percentage} color={progressColor} size={20} />
-        <h2 className={`font-medium text-base ${colorClass}`}>
+        <h2 className="font-medium text-base text-primary">
           {column.name}
         </h2>
-        <span className="text-base text-gray-400 font-normal">
+        <span className="text-base font-normal text-tertiary">
           {column.items.length}
         </span>
       </div>
@@ -48,9 +43,10 @@ export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpan
           <div
             {...provided.droppableProps}
             ref={provided.innerRef}
-            className={`min-h-[400px] transition-colors duration-200 rounded-lg ${
-              snapshot.isDraggingOver ? 'bg-blue-50' : ''
-            }`}
+            className="min-h-[400px] transition-colors duration-200 rounded-lg"
+            style={{
+              backgroundColor: snapshot.isDraggingOver ? 'rgba(107, 114, 128, 0.15)' : 'transparent'
+            }}
           >
             {column.items.map((item, index) => (
               <IncidentCard 
@@ -60,6 +56,8 @@ export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpan
                 isExpanded={expandedCardId === item.id}
                 onToggleExpand={onToggleExpand}
                 onOpenModal={onOpenModal}
+                onDiagnosisUpdate={onDiagnosisUpdate}
+                onSolutionUpdate={onSolutionUpdate}
               />
             ))}
             {provided.placeholder}
