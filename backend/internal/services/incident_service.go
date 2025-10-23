@@ -9,51 +9,175 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
 	wshub "github.com/tri27pham/incident-management-simulator/backend/internal/websocket"
+	"gorm.io/gorm"
 )
 
 // FullIncidentDetails wraps an incident for broadcasting
 // The embedded Incident already includes Analysis via the foreign key relationship
 type FullIncidentDetails struct {
 	models.Incident
+	// Note: models.Incident already has Analysis field, no need to duplicate it
 }
 
 func CreateIncident(incident *models.Incident) error {
-	return db.DB.Create(incident).Error
+	// Start a transaction to ensure both incident and status history are created together
+	tx := db.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Create the incident
+	if err := tx.Create(incident).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Create initial status history entry
+	statusHistory := models.StatusHistory{
+		IncidentID: incident.ID,
+		FromStatus: nil, // NULL for initial status
+		ToStatus:   incident.Status,
+		ChangedAt:  incident.CreatedAt,
+	}
+	if err := tx.Create(&statusHistory).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
 }
 
 func GetAllIncidents() ([]models.Incident, error) {
 	var incidents []models.Incident
-	err := db.DB.Preload("Analysis").Find(&incidents).Error
+	err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		Where("status != ?", "resolved").
+		Find(&incidents).Error
+	return incidents, err
+}
+
+func GetResolvedIncidents() ([]models.Incident, error) {
+	var incidents []models.Incident
+	err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		Where("status = ?", "resolved").
+		Order("updated_at DESC").
+		Find(&incidents).Error
 	return incidents, err
 }
 
 func GetIncidentByID(id uuid.UUID) (models.Incident, error) {
 	var incident models.Incident
-	err := db.DB.Preload("Analysis").First(&incident, id).Error
+	err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error
 	return incident, err
 }
 
-func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) {
+func UpdateIncidentNotes(id uuid.UUID, notes string) (*models.Incident, error) {
 	var incident models.Incident
-	if err := db.DB.Preload("Analysis").First(&incident, id).Error; err != nil {
-		return incident, err // Incident not found
+	if err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error; err != nil {
+		return nil, err // Incident not found
 	}
 
-	incident.Status = status
+	// Update notes
+	incident.Notes = notes
 	if err := db.DB.Save(&incident).Error; err != nil {
-		return incident, err
+		return nil, err
+	}
+
+	log.Printf("✅ Updated incident %s notes", incident.ID)
+	return &incident, nil
+}
+
+func UpdateIncidentStatus(id uuid.UUID, status string) (*models.Incident, error) {
+	var incident models.Incident
+	if err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error; err != nil {
+		return nil, err // Incident not found
+	}
+
+	// Store old status before updating
+	oldStatus := incident.Status
+
+	// Only create history entry if status actually changed
+	if oldStatus != status {
+		// Start a transaction
+		tx := db.DB.Begin()
+		defer func() {
+			if r := recover(); r != nil {
+				tx.Rollback()
+			}
+		}()
+
+		// Update incident status
+		incident.Status = status
+		if err := tx.Save(&incident).Error; err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+
+		// Create status history entry
+		statusHistory := models.StatusHistory{
+			IncidentID: incident.ID,
+			FromStatus: &oldStatus,
+			ToStatus:   status,
+			ChangedAt:  time.Now(),
+		}
+		if err := tx.Create(&statusHistory).Error; err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+
+		// Commit transaction
+		if err := tx.Commit().Error; err != nil {
+			return nil, err
+		}
+
+		// Reload the incident with updated status history
+		if err := db.DB.
+			Preload("Analysis").
+			Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+				return db.Order("incident_status_history.changed_at ASC")
+			}).
+			First(&incident, id).Error; err != nil {
+			return nil, err
+		}
+
+		log.Printf("✅ Updated incident %s status from %s to %s", incident.ID, oldStatus, status)
 	}
 
 	// Broadcast the status update to all connected clients
 	BroadcastIncidentUpdate(id)
-	log.Printf("Broadcasted status update for incident %s to %s", incident.ID, status)
+	log.Printf("📡 Broadcasted status update for incident %s to %s", incident.ID, status)
 
-	return incident, nil
+	return &incident, nil
 }
 
 // BroadcastIncidentUpdate fetches an incident with its analysis and broadcasts it via WebSocket
@@ -67,6 +191,15 @@ func BroadcastIncidentUpdate(id uuid.UUID) {
 	details := FullIncidentDetails{
 		Incident: incident,
 	}
+
+	// Debug: Log if analysis is present
+	if incident.Analysis != nil {
+		log.Printf("📡 Broadcasting incident %s with Analysis (diagnosis: %d chars, solution: %d chars)",
+			id.String()[:8], len(incident.Analysis.Diagnosis), len(incident.Analysis.Solution))
+	} else {
+		log.Printf("📡 Broadcasting incident %s without Analysis", id.String()[:8])
+	}
+
 	wshub.WSHub.Broadcast <- details
 }
 
@@ -75,13 +208,13 @@ func RunFullAnalysisPipeline(incident models.Incident) {
 	// Step 1: Immediately broadcast the newly created incident
 	detailsNew := FullIncidentDetails{Incident: incident}
 	wshub.WSHub.Broadcast <- detailsNew
-	log.Printf("Broadcasted new incident %s", incident.ID)
+	log.Printf("📡 Broadcasted new incident %s (no analysis yet)", incident.ID.String()[:8])
 
 	// Step 2: Trigger Diagnosis
-	log.Printf("Starting analysis pipeline for incident %s", incident.ID)
+	log.Printf("🔬 Starting analysis pipeline for incident %s", incident.ID.String()[:8])
 	_, err := TriggerAIDiagnosis(incident.ID)
 	if err != nil {
-		log.Printf("Error in AI diagnosis for incident %s: %v", incident.ID, err)
+		log.Printf("❌ Error in AI diagnosis for incident %s: %v", incident.ID.String()[:8], err)
 		return // End the pipeline if diagnosis fails
 	}
 
@@ -91,6 +224,12 @@ func RunFullAnalysisPipeline(incident models.Incident) {
 	detailsWithDiagnosis := FullIncidentDetails{
 		Incident: incidentWithStatus,
 	}
+
+	if incidentWithStatus.Analysis != nil {
+		log.Printf("📡 Broadcasting incident %s WITH diagnosis (provider: %s)",
+			incident.ID.String()[:8], incidentWithStatus.Analysis.DiagnosisProvider)
+	}
+
 	wshub.WSHub.Broadcast <- detailsWithDiagnosis
 	log.Printf("Broadcasted diagnosis update for incident %s", incident.ID)
 

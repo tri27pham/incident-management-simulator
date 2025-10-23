@@ -77,6 +77,19 @@ sleep 3
 echo "🧹 Cleaning up stale connections..."
 PGPASSWORD=incident_pass psql -h localhost -U incident_user -d incident_db -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'incident_db' AND pid <> pg_backend_pid() AND state = 'idle' AND state_change < NOW() - INTERVAL '5 minutes';" > /dev/null 2>&1 || true
 
+# Run database migrations
+echo "🗄️  Running database migrations..."
+for migration in "$PROJECT_DIR/backend/migrations"/*.sql; do
+    if [ -f "$migration" ]; then
+        echo "   Applying $(basename "$migration")..."
+        docker exec -i postgres-dev psql -U incident_user -d incident_db < "$migration" > /dev/null 2>&1 || {
+            echo "   ⚠️  Migration $(basename "$migration") already applied or failed (this is usually fine)"
+        }
+    fi
+done
+echo "✅ Migrations complete!"
+echo ""
+
 echo "🔧 Starting Backend (Go)..."
 cd "$PROJECT_DIR/backend"
 AI_DIAGNOSIS_URL=http://localhost:8000 go run main.go > /tmp/incident-backend.log 2>&1 &

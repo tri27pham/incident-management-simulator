@@ -75,12 +75,20 @@ def generation_loop():
     """Background thread loop to generate and report incidents periodically."""
     global is_running
     print("🚀 Incident Generator loop started.")
-    print(f"➡️ Reporting incidents to: {INCIDENTS_ENDPOINT}")
+    print(f"➡️ Using backend incident generation: {BACKEND_URL}/api/v1/incidents/generate")
     
     while not stop_flag.is_set():
-        incident = generate_incident()
-        if incident:
-            report_incident(incident)
+        # Call the backend's generate endpoint instead of generating locally
+        # This uses the ai-diagnosis service with Groq → Gemini fallback
+        try:
+            response = requests.post(f"{BACKEND_URL}/api/v1/incidents/generate", timeout=30)
+            if response.status_code == 201:
+                incident_data = response.json()
+                print(f"✅ Generated incident via backend: {incident_data.get('message', 'Unknown')[:50]}...")
+            else:
+                print(f"⚠️  Backend generation failed: {response.status_code}")
+        except Exception as e:
+            print(f"❌ Error generating incident: {e}")
         
         # Wait for a random interval before generating the next incident
         # Check stop_flag more frequently to be responsive

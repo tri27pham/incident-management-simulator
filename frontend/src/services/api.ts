@@ -1,13 +1,23 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 
+export interface BackendStatusHistory {
+  id: string;
+  incident_id: string;
+  from_status: string | null;
+  to_status: string;
+  changed_at: string;
+}
+
 export interface BackendIncident {
   id: string;
   message: string;
   source: string;
   status: 'triage' | 'investigating' | 'fixing' | 'resolved';
   generated_by?: string;
+  notes?: string;
   created_at: string;
   updated_at: string;
+  status_history?: BackendStatusHistory[];
 }
 
 export interface IncidentAnalysis {
@@ -26,11 +36,20 @@ export interface IncidentWithAnalysis extends BackendIncident {
   analysis?: IncidentAnalysis;
 }
 
-// Fetch all incidents
+// Fetch all incidents (excluding resolved)
 export async function fetchIncidents(): Promise<BackendIncident[]> {
   const response = await fetch(`${API_BASE_URL}/incidents`);
   if (!response.ok) {
     throw new Error('Failed to fetch incidents');
+  }
+  return response.json();
+}
+
+// Fetch resolved incidents
+export async function fetchResolvedIncidents(): Promise<BackendIncident[]> {
+  const response = await fetch(`${API_BASE_URL}/incidents/resolved`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch resolved incidents');
   }
   return response.json();
 }
@@ -57,6 +76,19 @@ export async function updateIncidentStatus(id: string, status: string): Promise<
   });
   if (!response.ok) {
     throw new Error('Failed to update incident');
+  }
+  return response.json();
+}
+
+// Update incident notes
+export async function updateIncidentNotes(id: string, notes: string): Promise<BackendIncident> {
+  const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update incident notes');
   }
   return response.json();
 }

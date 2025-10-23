@@ -7,11 +7,22 @@ from groq import Groq
 
 load_dotenv()
 
-app = FastAPI(title="AI Diagnosis Service (Gemini → Groq Fallback)", version="2.0")
+app = FastAPI(title="AI Diagnosis Service (Groq → Gemini Fallback)", version="2.0")
 
 # Initialize AI clients
-gemini_client = genai.Client()
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY")) if os.getenv("GROQ_API_KEY") else None
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY")
+
+gemini_client = genai.Client() if gemini_api_key else None
+groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
+
+# Log which AI services are available
+if groq_client:
+    print("✅ Groq API configured (PRIMARY)")
+if gemini_client:
+    print("✅ Gemini API configured (FALLBACK)")
+if not groq_client and not gemini_client:
+    print("⚠️  WARNING: No AI API keys configured!")
 
 # --- Data Models ---
 class IncidentRequest(BaseModel):
@@ -39,6 +50,9 @@ def clean_json_string(s: str) -> str:
 
 def call_gemini(prompt: str) -> str:
     """Calls the Gemini API using the SDK's client.models.generate_content method."""
+    if not gemini_client:
+        raise Exception("Gemini API key not configured")
+    
     try:
         response = gemini_client.models.generate_content(
             model="gemini-2.5-flash",
@@ -80,34 +94,49 @@ def call_groq(prompt: str) -> str:
         raise Exception(f"Groq API error: {error_str}")
 
 def call_ai_with_fallback(prompt: str) -> tuple[str, str]:
-    """Tries Gemini first, falls back to Groq if it fails. Returns (result, provider)."""
-    # Try Gemini first
-    try:
-        result = call_gemini(prompt)
-        print("✅ Used Gemini API")
-        return (result, "gemini")
-    except Exception as gemini_error:
-        print(f"⚠️  Gemini failed: {gemini_error}")
-        
-        # Try Groq as fallback
+    """Tries Groq first, falls back to Gemini if it fails. Returns (result, provider)."""
+    # Try Groq first (PRIMARY)
+    if groq_client:
         try:
             result = call_groq(prompt)
-            print("✅ Used Groq API (fallback)")
+            print("✅ Used Groq API (primary)")
             return (result, "groq")
         except Exception as groq_error:
-            print(f"❌ Groq also failed: {groq_error}")
-            # Return error JSON for backend to handle
-            return ('{"error":"All AI services unavailable. Please try again later."}', "error")
+            print(f"⚠️  Groq failed: {groq_error}")
+    
+    # Try Gemini as fallback (SECONDARY)
+    if gemini_client:
+        try:
+            result = call_gemini(prompt)
+            print("✅ Used Gemini API (fallback)")
+            return (result, "gemini")
+        except Exception as gemini_error:
+            print(f"❌ Gemini also failed: {gemini_error}")
+    
+    # If both failed or neither is configured
+    if not groq_client and not gemini_client:
+        return ('{"error":"No AI services configured. Please set GROQ_API_KEY or GEMINI_API_KEY."}', "error")
+    else:
+        return ('{"error":"All AI services unavailable. Please try again later."}', "error")
 
 
 # --- Routes ---
 @app.post("/api/v1/diagnosis", response_model=DiagnosisResponse)
 def get_diagnosis(req: IncidentRequest):
-    prompt = f"""
-    You are an AI diagnosing software incidents.
-    Given this description: "{req.description}"
-    Respond ONLY in valid JSON with keys "diagnosis" (string) and "severity" ("low"|"medium"|"high").
-    """
+    prompt = f"""Diagnose this software incident: "{req.description}"
+
+Provide 3-4 SHORT bullet points (one sentence each):
+- Root cause
+- Impact
+- Affected systems
+
+Use • symbol for bullets.
+
+Respond in JSON:
+{{
+  "diagnosis": "• [cause]\\n• [impact]\\n• [systems]",
+  "severity": "low" or "medium" or "high"
+}}"""
     
     # Try with garbage detection
     max_attempts = 2
@@ -160,11 +189,20 @@ def get_diagnosis(req: IncidentRequest):
 
 @app.post("/api/v1/suggested-fix", response_model=SuggestedFixResponse)
 def get_suggested_fix(req: IncidentRequest):
-    prompt = f"""
-    You are a Site Reliability Engineer suggesting a fix for an incident.
-    Incident: "{req.description}"
-    Respond ONLY in valid JSON with keys "suggested_fix" (string) and "confidence" (float between 0.0 and 1.0).
-    """
+    prompt = f"""Provide a fix for this incident: "{req.description}"
+
+Provide 3-4 SHORT, actionable bullet points:
+- Immediate action to take
+- How to fix it
+- How to verify it's fixed
+
+One sentence per bullet. Use • symbol.
+
+Respond in JSON:
+{{
+  "suggested_fix": "• [immediate action]\\n• [fix steps]\\n• [verification]",
+  "confidence": 0.0 to 1.0
+}}"""
     
     # Try with garbage detection
     max_attempts = 2
@@ -246,15 +284,41 @@ def is_valid_incident_response(text: str) -> bool:
 @app.post("/api/v1/generate-incident")
 def generate_incident():
     """Generate a random incident using AI."""
-    prompt = """Generate a realistic software incident. 
+    import random
+    
+    # Randomly select a category to enforce variety
+    categories = [
+        ("API/Gateway", "API Gateway returning 503 errors for EU users", "api-gateway"),
+        ("Authentication", "JWT token validation failing causing user logout loops", "auth-service"),
+        ("Frontend", "JavaScript bundle failing to load causing blank pages", "cdn"),
+        ("Cache", "Redis memory exhaustion causing cache misses and API slowdowns", "redis-cache"),
+        ("Message Queue", "Kafka consumer lag exceeding 1 million messages", "event-processor"),
+        ("Infrastructure", "Kubernetes nodes running out of disk space causing pod evictions", "k8s-cluster"),
+        ("Payment", "Stripe webhook delays causing order confirmation failures", "payment-service"),
+        ("Email", "SendGrid rate limits causing password reset email delays", "email-service"),
+        ("Deployment", "Recent deployment causing memory leaks in production pods", "user-api"),
+        ("Monitoring", "Datadog agent crashes causing metrics gaps in dashboards", "observability"),
+        ("Network", "Network latency spikes between regions causing timeout errors", "load-balancer"),
+        ("Storage", "S3 bucket access errors preventing image uploads", "storage-service"),
+        ("Search", "Elasticsearch cluster yellow state causing slow search queries", "search-api"),
+        ("Database", "PostgreSQL connection pool exhaustion causing transaction timeouts", "postgres-db"),
+        ("CDN", "CloudFlare cache purge causing origin server overload", "cdn-origin"),
+    ]
+    
+    category, example_msg, example_src = random.choice(categories)
+    
+    prompt = f"""Generate a realistic software incident in the {category} category.
+
+    Be creative and specific. DO NOT repeat this example exactly: "{example_msg}"
+    Use it as inspiration but create something DIFFERENT in the same category.
     
     Respond with ONLY valid JSON (no explanations, no markdown):
-    {
-      "message": "A specific incident description like 'API Gateway returning 503 errors for EU users'",
-      "source": "A service name like 'api-gateway' or 'postgres-db'"
-    }
+    {{
+      "message": "A specific incident description (be creative and different!)",
+      "source": "A service name like '{example_src}' or similar"
+    }}
     
-    Make it realistic and varied. Do NOT include any other text."""
+    Make it realistic and unique. Do NOT include any other text."""
     
     # Try to get a valid response (retry up to 2 times if we get garbage)
     max_attempts = 2

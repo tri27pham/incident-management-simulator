@@ -1,1 +1,247 @@
 @import "tailwindcss";
+
+/* Theme Colors */
+:root {
+  /* Light Theme (Default) */
+  --bg-primary: 249 250 251; /* gray-50 */
+  --bg-secondary: 255 255 255; /* white */
+  --bg-tertiary: 243 244 246; /* gray-100 - original */
+  --text-primary: 17 24 39; /* gray-900 */
+  --text-secondary: 75 85 99; /* gray-600 */
+  --text-tertiary: 156 163 175; /* gray-400 */
+  --border-color: 229 231 235; /* gray-200 */
+  --accent-primary: 249 115 22; /* orange-600 */
+  --accent-secondary: 251 146 60; /* orange-400 */
+  --accent-hover: 234 88 12; /* orange-700 */
+  --button-hover-bg: 255 237 213; /* orange-100 */
+  --card-bg: 255 255 255;
+  --card-hover: 249 250 251;
+  --card-text-primary: 17 24 39; /* gray-900 */
+  --card-text-secondary: 75 85 99; /* gray-600 */
+  --card-text-tertiary: 156 163 175; /* gray-400 */
+}
+
+[data-theme="dark"] {
+  /* Dark Theme */
+  --bg-primary: 15 15 15; /* Almost black #0f0f0f */
+  --bg-secondary: 28 28 28; /* Dark gray #1c1c1c */
+  --bg-tertiary: 20 20 20; /* Very subtle, closer to bg-primary #141414 */
+  --text-primary: 243 244 246; /* gray-100 - light text */
+  --text-secondary: 209 213 219; /* gray-300 */
+  --text-tertiary: 156 163 175; /* gray-400 */
+  --border-color: 48 48 48; /* Dark border #303030 */
+  --accent-primary: 249 115 22; /* orange-600 */
+  --accent-secondary: 251 146 60; /* orange-400 */
+  --accent-hover: 234 88 12; /* orange-700 */
+  --button-hover-bg: 55 65 81; /* gray-700 */
+  --card-bg: 28 28 28; /* Dark gray for cards in dark mode #1c1c1c */
+  --card-hover: 38 38 38; /* Slightly lighter on hover */
+  --card-text-primary: 243 244 246; /* Light text for dark cards */
+  --card-text-secondary: 209 213 219; /* Light secondary text */
+  --card-text-tertiary: 156 163 175; /* Gray tertiary */
+}
+
+/* Apply theme colors */
+body {
+  background-color: rgb(var(--bg-primary));
+  color: rgb(var(--text-primary));
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Smooth transitions for theme switching - only for colors */
+body *:not(.no-theme-transition) {
+  transition: background-color 0.3s ease, 
+              border-color 0.3s ease, 
+              color 0.3s ease,
+              fill 0.3s ease,
+              stroke 0.3s ease;
+}
+
+/* Theme-aware utility classes */
+.bg-card {
+  background-color: rgb(var(--card-bg));
+}
+
+.bg-card-hover:hover {
+  background-color: rgb(var(--card-hover));
+}
+
+.text-primary {
+  color: rgb(var(--text-primary));
+}
+
+.text-secondary {
+  color: rgb(var(--text-secondary));
+}
+
+.text-tertiary {
+  color: rgb(var(--text-tertiary));
+}
+
+.border-theme {
+  border-color: rgb(var(--border-color));
+}
+
+.bg-primary {
+  background-color: rgb(var(--bg-primary));
+}
+
+.bg-secondary {
+  background-color: rgb(var(--bg-secondary));
+}
+
+.bg-tertiary {
+  background-color: rgb(var(--bg-tertiary));
+}
+
+.text-accent {
+  color: rgb(var(--accent-primary));
+}
+
+.bg-accent {
+  background-color: rgb(var(--accent-primary));
+}
+
+.bg-accent-hover:hover {
+  background-color: rgb(var(--accent-hover));
+}
+
+.text-card-primary {
+  color: rgb(var(--card-text-primary));
+}
+
+.text-card-secondary {
+  color: rgb(var(--card-text-secondary));
+}
+
+.text-card-tertiary {
+  color: rgb(var(--card-text-tertiary));
+}
+
+.hover\:bg-theme-button-hover:hover {
+  background-color: rgb(var(--button-hover-bg));
+}
+
+/* AI Diagnosis/Solution boxes - green for diagnosis, blue for solution */
+.diagnosis-box {
+  background-color: rgb(240 253 244); /* green-50 */
+  border: 1px solid rgb(187 247 208); /* green-200 */
+}
+
+.diagnosis-box .diagnosis-title {
+  color: rgb(22 101 52); /* green-800 */
+}
+
+.diagnosis-box .diagnosis-text {
+  color: rgb(21 128 61); /* green-700 */
+  line-height: 1.8;
+  word-wrap: break-word;
+}
+
+.solution-box {
+  background-color: rgb(239 246 255); /* blue-50 */
+  border: 1px solid rgb(191 219 254); /* blue-200 */
+}
+
+.solution-box .solution-title {
+  color: rgb(30 58 138); /* blue-900 */
+}
+
+.solution-box .solution-text {
+  color: rgb(29 78 216); /* blue-700 */
+  line-height: 1.8;
+  word-wrap: break-word;
+}
+
+[data-theme="dark"] .diagnosis-box {
+  background-color: transparent;
+  border: 1px solid rgb(34 197 94); /* green-500 */
+}
+
+[data-theme="dark"] .diagnosis-box .diagnosis-title {
+  color: rgb(74 222 128); /* green-400 */
+}
+
+[data-theme="dark"] .diagnosis-box .diagnosis-text {
+  color: rgb(134 239 172); /* green-300 */
+}
+
+[data-theme="dark"] .solution-box {
+  background-color: transparent;
+  border: 1px solid rgb(59 130 246); /* blue-500 */
+}
+
+[data-theme="dark"] .solution-box .solution-title {
+  color: rgb(96 165 250); /* blue-400 */
+}
+
+[data-theme="dark"] .solution-box .solution-text {
+  color: rgb(147 197 253); /* blue-300 */
+}
+
+/* AI Provider badges - subtle in dark mode */
+[data-theme="dark"] .ai-badge-gemini {
+  background-color: transparent;
+  color: rgb(196 181 253); /* purple-300 */
+  border-color: rgb(147 51 234); /* purple-600 */
+}
+
+[data-theme="dark"] .ai-badge-groq {
+  background-color: transparent;
+  color: rgb(253 186 116); /* orange-300 */
+  border-color: rgb(234 88 12); /* orange-600 */
+}
+
+[data-theme="dark"] .ai-badge-default {
+  background-color: transparent;
+  color: rgb(209 213 219); /* gray-300 */
+  border-color: rgb(75 85 99); /* gray-600 */
+}
+
+/* Team badges - subtle in dark mode */
+[data-theme="dark"] .team-badge {
+  background-color: transparent;
+  color: rgb(147 197 253); /* blue-300 */
+  border-color: rgb(59 130 246); /* blue-500 */
+}
+
+/* Card expansion animation */
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    max-height: 1000px;
+    transform: translateY(0);
+  }
+}
+
+/* Custom scrollbar styling for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border-color));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--text-tertiary));
+}
+
+/* Backdrop blur support */
+@supports (backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px)) {
+  .backdrop-blur-sm {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+}

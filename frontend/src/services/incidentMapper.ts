@@ -121,15 +121,21 @@ export function mapBackendIncidentToFrontend(
     });
   }
   
+  // Map status history from backend
+  const statusHistory = backendIncident.status_history?.map(entry => ({
+    status: mapBackendStatusToFrontend(entry.to_status),
+    timestamp: new Date(entry.changed_at).toLocaleString(),
+  })) || [];
+
   const mappedIncident = {
     id: backendIncident.id,
     incidentNumber: `INC-${backendIncident.id.slice(0, 4).toUpperCase()}`,
     title: backendIncident.message,
     timeElapsed,
+    status: mapBackendStatusToFrontend(backendIncident.status),
     severity: analysis ? mapSeverity(analysis.severity) : undefined,
     team,
-    description: hasValidDiagnosis && analysis ? analysis.diagnosis : undefined,
-    impact: analysis && hasValidDiagnosis && analysis.confidence !== undefined ? `Confidence: ${(analysis.confidence * 100).toFixed(0)}%` : undefined,
+    description: hasValidDiagnosis && analysis ? analysis.diagnosis : undefined, // Diagnosis IS the description
     affectedServices: backendIncident.source ? [backendIncident.source] : [],
     assignee: undefined,
     createdAt: new Date(backendIncident.created_at).toLocaleString(),
@@ -138,9 +144,13 @@ export function mapBackendIncidentToFrontend(
     diagnosisProvider: analysis?.diagnosis_provider as 'gemini' | 'groq' | 'error' | 'unknown' | undefined,
     solution: hasValidSolution && analysis ? analysis.solution : undefined,
     solutionProvider: analysis?.solution_provider as 'gemini' | 'groq' | 'error' | 'unknown' | undefined,
+    confidence: analysis?.confidence,
     hasDiagnosis: hasValidDiagnosis,
     hasSolution: hasValidSolution,
     generated_by: backendIncident.generated_by as 'gemini' | 'groq' | 'fallback' | 'manual' | undefined,
+    statusHistory,
+    timeline: statusHistory, // Also provide as timeline for resolved panel
+    notes: backendIncident.notes,
   };
   
   console.log(`[Mapper] Final incident ${backendIncident.id.slice(0, 8)}:`, {
@@ -159,6 +169,7 @@ export function mapFrontendStatusToBackend(status: string): string {
     'Triage': 'triage',
     'Investigating': 'investigating',
     'Fixing': 'fixing',
+    'Resolved': 'resolved',
   };
   return statusMap[status] || 'triage';
 }
