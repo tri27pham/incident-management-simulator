@@ -12,6 +12,7 @@ type Incident struct {
 	Source        string            `json:"source"`
 	Status        string            `json:"status" gorm:"default:triage"`
 	GeneratedBy   string            `json:"generated_by" gorm:"default:manual"` // "gemini", "groq", "fallback", "manual"
+	Notes         string            `json:"notes" gorm:"type:text"`
 	CreatedAt     time.Time         `json:"created_at"`
 	UpdatedAt     time.Time         `json:"updated_at"`
 	Analysis      *IncidentAnalysis `gorm:"foreignKey:IncidentID" json:"analysis,omitempty"`

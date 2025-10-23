@@ -91,7 +91,7 @@ func GetIncidentByID(id uuid.UUID) (models.Incident, error) {
 	return incident, err
 }
 
-func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) {
+func UpdateIncidentNotes(id uuid.UUID, notes string) (*models.Incident, error) {
 	var incident models.Incident
 	if err := db.DB.
 		Preload("Analysis").
@@ -99,7 +99,28 @@ func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) 
 			return db.Order("incident_status_history.changed_at ASC")
 		}).
 		First(&incident, id).Error; err != nil {
-		return incident, err // Incident not found
+		return nil, err // Incident not found
+	}
+
+	// Update notes
+	incident.Notes = notes
+	if err := db.DB.Save(&incident).Error; err != nil {
+		return nil, err
+	}
+
+	log.Printf("✅ Updated incident %s notes", incident.ID)
+	return &incident, nil
+}
+
+func UpdateIncidentStatus(id uuid.UUID, status string) (*models.Incident, error) {
+	var incident models.Incident
+	if err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error; err != nil {
+		return nil, err // Incident not found
 	}
 
 	// Store old status before updating
@@ -119,7 +140,7 @@ func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) 
 		incident.Status = status
 		if err := tx.Save(&incident).Error; err != nil {
 			tx.Rollback()
-			return incident, err
+			return nil, err
 		}
 
 		// Create status history entry
@@ -131,12 +152,12 @@ func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) 
 		}
 		if err := tx.Create(&statusHistory).Error; err != nil {
 			tx.Rollback()
-			return incident, err
+			return nil, err
 		}
 
 		// Commit transaction
 		if err := tx.Commit().Error; err != nil {
-			return incident, err
+			return nil, err
 		}
 
 		// Reload the incident with updated status history
@@ -146,7 +167,7 @@ func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) 
 				return db.Order("incident_status_history.changed_at ASC")
 			}).
 			First(&incident, id).Error; err != nil {
-			return incident, err
+			return nil, err
 		}
 
 		log.Printf("✅ Updated incident %s status from %s to %s", incident.ID, oldStatus, status)
@@ -156,7 +177,7 @@ func UpdateIncidentStatus(id uuid.UUID, status string) (models.Incident, error) 
 	BroadcastIncidentUpdate(id)
 	log.Printf("📡 Broadcasted status update for incident %s to %s", incident.ID, status)
 
-	return incident, nil
+	return &incident, nil
 }
 
 // BroadcastIncidentUpdate fetches an incident with its analysis and broadcasts it via WebSocket

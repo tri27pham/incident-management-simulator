@@ -100,17 +100,41 @@ func UpdateIncidentHandler(c *gin.Context) {
 	}
 
 	var updateData struct {
-		Status string `json:"status" binding:"required,oneof=triage investigating fixing resolved"`
+		Status *string `json:"status" binding:"omitempty,oneof=triage investigating fixing resolved"`
+		Notes  *string `json:"notes"`
 	}
 	if err := c.ShouldBindJSON(&updateData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	incident, err := services.UpdateIncidentStatus(id, updateData.Status)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update incident"})
-		return
+	// Update status if provided
+	var incident *models.Incident
+	if updateData.Status != nil {
+		incident, err = services.UpdateIncidentStatus(id, *updateData.Status)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update incident"})
+			return
+		}
+	}
+
+	// Update notes if provided
+	if updateData.Notes != nil {
+		incident, err = services.UpdateIncidentNotes(id, *updateData.Notes)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update incident notes"})
+			return
+		}
+	}
+
+	// If no update was performed, return the current incident
+	if incident == nil {
+		incidentValue, err := services.GetIncidentByID(id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Incident not found"})
+			return
+		}
+		incident = &incidentValue
 	}
 
 	c.JSON(http.StatusOK, incident)

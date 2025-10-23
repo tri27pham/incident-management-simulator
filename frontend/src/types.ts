@@ -32,6 +32,7 @@ export interface Incident {
   generated_by?: 'gemini' | 'groq' | 'fallback' | 'manual';
   statusHistory?: StatusHistoryEntry[];
   timeline?: StatusHistoryEntry[]; // Alias for statusHistory for resolved panel
+  notes?: string;
 }
 
 export type IncidentBoardState = {
