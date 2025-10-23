@@ -62,14 +62,16 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
   // Auto-scroll card into view when expanded
   useEffect(() => {
     if (isExpanded && cardRef.current) {
-      // Delay to allow the expand animation to complete
-      window.setTimeout(() => {
-        cardRef.current?.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'center',
-          inline: 'nearest'
+      // Use requestAnimationFrame for smoother animation sync
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          cardRef.current?.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center',
+            inline: 'nearest'
+          });
         });
-      }, 350); // Match the expand animation duration
+      });
     }
   }, [isExpanded]);
 
