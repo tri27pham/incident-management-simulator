@@ -12,3 +12,9 @@ __pycache__/
 .env.*
 /dist
 /build
+
+# Logs
+logs/
+*.log
+*.pid
+/tmp/incident-*.log

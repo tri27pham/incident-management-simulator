@@ -22,12 +22,12 @@ Migrations are **automatically applied** when you start services:
 
 ### Docker Compose
 ```bash
-./start-docker.sh   # Automatically runs migrations
+./scripts/start-docker.sh   # Automatically runs migrations
 ```
 
 ### Local Development
 ```bash
-./start.sh          # Automatically runs migrations
+./scripts/start.sh          # Automatically runs migrations
 ```
 
 ## Manual Migration
@@ -36,11 +36,11 @@ If you need to manually run migrations:
 
 ```bash
 # Auto-detect which database is running
-./run-migrations.sh
+./scripts/run-migrations.sh
 
 # Or specify the mode explicitly
-./run-migrations.sh local          # For local dev (postgres-dev)
-./run-migrations.sh docker-compose # For docker-compose (postgres)
+./scripts/run-migrations.sh local          # For local dev (postgres-dev)
+./scripts/run-migrations.sh docker-compose # For docker-compose (postgres)
 ```
 
 ## Creating New Migrations
@@ -72,7 +72,7 @@ This project uses **two different PostgreSQL containers**:
 | Mode | Container Name | Port | Used By |
 |------|---------------|------|---------|
 | Docker Compose | `postgres` | 5432 | docker-compose up |
-| Local Dev | `postgres-dev` | 5432 | ./start.sh |
+| Local Dev | `postgres-dev` | 5432 | ./scripts/start.sh |
 
 **Important:** When you create a new migration, it needs to be applied to whichever database you're currently using. The scripts handle this automatically.
 
@@ -84,29 +84,29 @@ This is normal! Migrations are idempotent (safe to run multiple times). The scri
 ### Missing Table Errors
 If you see "relation does not exist" errors:
 ```bash
-./run-migrations.sh
+./scripts/run-migrations.sh
 ```
 
 ### Switching Between Docker Compose and Local Dev
 Each mode has its own database. When you switch modes, you might need to run migrations manually:
 ```bash
 # After switching to local dev
-./run-migrations.sh local
+./scripts/run-migrations.sh local
 
 # After switching to docker-compose
-./run-migrations.sh docker-compose
+./scripts/run-migrations.sh docker-compose
 ```
 
 ### Reset Database
 ```bash
 # Stop services
-./stop.sh  # or ./stop-docker.sh
+./scripts/stop.sh  # or ./scripts/stop-docker.sh
 
 # Remove database container
 docker rm -f postgres-dev  # or postgres for docker-compose
 
 # Start again (will recreate DB and run migrations)
-./start.sh  # or ./start-docker.sh
+./scripts/start.sh  # or ./scripts/start-docker.sh
 ```
 
 ## Best Practices

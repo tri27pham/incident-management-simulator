@@ -3,23 +3,23 @@
 ## 🚀 Essential Commands
 
 ```bash
-./start.sh     # Start everything (handles conflicts automatically)
-./stop.sh      # Stop everything (3-layer cleanup)
-./status.sh    # Check what's running
-./logs.sh      # View all logs
+./scripts/start.sh     # Start everything (handles conflicts automatically)
+./scripts/stop.sh      # Stop everything (3-layer cleanup)
+./scripts/status.sh    # Check what's running
+./scripts/logs.sh      # View all logs
 ```
 
 ---
 
 ## 🛡️ Built-in Protections
 
-### Start Script (`./start.sh`)
+### Start Script (`./scripts/start.sh`)
 ✅ Automatically kills old processes on ports 8080, 5173, 8000  
 ✅ Cleans up stale database connections  
 ✅ Verifies all services are healthy before completing  
 ✅ Gives specific error messages if anything fails  
 
-### Stop Script (`./stop.sh`)
+### Stop Script (`./scripts/stop.sh`)
 ✅ Three-layer cleanup approach:
   1. Kill by PID files
   2. Kill by port numbers (catches orphans)
@@ -45,15 +45,15 @@
 ```
 Problem?
   ↓
-Run: ./stop.sh
+Run: ./scripts/stop.sh
   ↓
 Wait 2 seconds
   ↓
-Run: ./start.sh
+Run: ./scripts/start.sh
   ↓
-Check: ./status.sh
+Check: ./scripts/status.sh
   ↓
-Still broken? Check logs: ./logs.sh
+Still broken? Check logs: ./scripts/logs.sh
 ```
 
 ---
@@ -61,9 +61,9 @@ Still broken? Check logs: ./logs.sh
 ## 💾 Database Commands
 
 ```bash
-./clear-db.sh           # Clear all incidents (safe)
-./reset-db.sh           # Nuclear reset (destroys everything)
-./fix-db-connections.sh # Fix DBeaver connection issues
+./scripts/clear-db.sh           # Clear all incidents (safe)
+./scripts/reset-db.sh           # Nuclear reset (destroys everything)
+./scripts/fix-db-connections.sh # Fix DBeaver connection issues
 ```
 
 ---
@@ -71,15 +71,15 @@ Still broken? Check logs: ./logs.sh
 ## 🐛 Common Issues & Fixes
 
 ### "Port already in use"
-**Solution:** Run `./stop.sh` then `./start.sh` again  
+**Solution:** Run `./scripts/stop.sh` then `./scripts/start.sh` again  
 **Why it works:** stop.sh kills all processes on those ports
 
 ### "Datasource was invalidated"
-**Solution:** Run `./fix-db-connections.sh`  
+**Solution:** Run `./scripts/fix-db-connections.sh`  
 **Why:** DBeaver has stale connections from restarted PostgreSQL
 
 ### "Backend not responding"
-**Solution:** Check logs with `./logs.sh backend`  
+**Solution:** Check logs with `./scripts/logs.sh backend`  
 **Why:** Might be old backend on port 8080
 
 ### "AI diagnosis failing"
@@ -104,20 +104,20 @@ View with: `tail -f /tmp/incident-*.log`
 
 ### Morning Start:
 ```bash
-./start.sh
+./scripts/start.sh
 # Wait for health checks
 # Open http://localhost:5173
 ```
 
 ### During Development:
 ```bash
-./status.sh      # Check what's running
-./logs.sh backend # Debug specific service
+./scripts/status.sh      # Check what's running
+./scripts/logs.sh backend # Debug specific service
 ```
 
 ### End of Day:
 ```bash
-./stop.sh
+./scripts/stop.sh
 ```
 
 ---
@@ -127,12 +127,12 @@ View with: `tail -f /tmp/incident-*.log`
 If everything is broken and you want to start fresh:
 
 ```bash
-./stop.sh
-./reset-db.sh
+./scripts/stop.sh
+./scripts/reset-db.sh
 pkill -9 go node python3  # Kill everything
 docker stop $(docker ps -q)
 sleep 3
-./start.sh
+./scripts/start.sh
 ```
 
 This will give you a completely clean slate.

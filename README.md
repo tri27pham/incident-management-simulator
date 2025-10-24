@@ -12,7 +12,7 @@ A full-stack application that simulates incident management with AI-powered diag
 
 ### Start Everything
 ```bash
-./start.sh
+./scripts/start.sh
 ```
 
 This will:
@@ -30,7 +30,7 @@ This will:
 
 ### Stop Everything
 ```bash
-./stop.sh
+./scripts/stop.sh
 ```
 
 This will:
@@ -44,16 +44,16 @@ This will:
 
 ### Check Status
 ```bash
-./status.sh
+./scripts/status.sh
 ```
 
 ### View Logs
 ```bash
-./logs.sh              # All logs
-./logs.sh backend      # Backend only
-./logs.sh frontend     # Frontend only
-./logs.sh ai           # AI diagnosis only
-./logs.sh generator    # Incident generator only
+./scripts/logs.sh              # All logs
+./scripts/logs.sh backend      # Backend only
+./scripts/logs.sh frontend     # Frontend only
+./scripts/logs.sh ai           # AI diagnosis only
+./scripts/logs.sh generator    # Incident generator only
 ```
 
 ---
@@ -73,13 +73,13 @@ This will:
 
 ### Clear All Incidents
 ```bash
-./clear-db.sh
+./scripts/clear-db.sh
 ```
 Deletes all incidents but keeps schema intact.
 
 ### Reset Database (Nuclear)
 ```bash
-./reset-db.sh
+./scripts/reset-db.sh
 ```
 Completely destroys and recreates the database.
 
@@ -93,7 +93,7 @@ The start script automatically handles most issues, but if you still have proble
 
 1. **Run stop.sh first:**
    ```bash
-   ./stop.sh
+   ./scripts/stop.sh
    ```
    This uses a three-layer cleanup to ensure all old processes are killed.
 
@@ -111,7 +111,7 @@ The start script automatically handles most issues, but if you still have proble
 
 4. **Check logs:**
    ```bash
-   ./logs.sh
+   ./scripts/logs.sh
    ```
 
 **Note:** The start script now includes pre-flight checks that automatically kill conflicting processes.
@@ -130,7 +130,7 @@ The start script automatically handles most issues, but if you still have proble
 
 3. **Check backend has AI URL:**
    ```bash
-   ./status.sh
+   ./scripts/status.sh
    ```
 
 ### Database Connection Issues
@@ -283,7 +283,16 @@ MIT
 
 ## 🆘 Need Help?
 
-1. Check `./status.sh` to see which services are running
-2. Check logs with `./logs.sh`
-3. Try stopping and restarting: `./stop.sh && ./start.sh`
-4. For database issues: `./reset-db.sh` (⚠️ destroys all data)
+1. Check `./scripts/status.sh` to see which services are running
+2. Check logs with `./scripts/logs.sh`
+3. Try stopping and restarting: `./scripts/stop.sh && ./scripts/start.sh`
+4. For database issues: `./scripts/reset-db.sh` (⚠️ destroys all data)
+
+---
+
+## 📚 Documentation
+
+- [Quick Reference](docs/QUICK_REFERENCE.md) - Command cheatsheet
+- [Groq Setup](docs/GROQ_SETUP.md) - Configure Groq AI
+- [Migrations](docs/MIGRATIONS.md) - Database migration guide
+- [AI Fallback Changes](docs/AI_FALLBACK_CHANGES.md) - AI provider fallback system
