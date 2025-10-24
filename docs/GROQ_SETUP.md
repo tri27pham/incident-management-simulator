@@ -42,8 +42,8 @@ GROQ_API_KEY=your_groq_key
 ### Step 3: Restart the AI Diagnosis Service
 
 ```bash
-./stop.sh     # Stop all services
-./start.sh    # Start with new config
+./scripts/stop.sh     # Stop all services
+./scripts/start.sh    # Start with new config
 ```
 
 Or manually restart just the AI service:

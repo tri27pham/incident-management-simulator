@@ -69,7 +69,7 @@ Frontend shows error or "Get AI Diagnosis" button
 
 3. **Restart services:**
    ```bash
-   ./stop.sh && ./start.sh
+   ./scripts/stop.sh && ./scripts/start.sh
    ```
 
 ## 📈 Benefits:
@@ -121,7 +121,7 @@ export GEMINI_API_KEY=your_key
 export GROQ_API_KEY=your_key
 
 # Restart and test
-./stop.sh && ./start.sh
+./scripts/stop.sh && ./scripts/start.sh
 
 # Should use Gemini by default
 # Check logs to confirm
