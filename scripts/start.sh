@@ -73,6 +73,23 @@ fi
 echo "⏳ Waiting for PostgreSQL to initialize..."
 sleep 3
 
+# Start Redis test service (for AI agent)
+echo "🔴 Starting Redis test service..."
+cd "$PROJECT_DIR"
+docker-compose up -d redis-test > /dev/null 2>&1 || echo "   ℹ️  Redis test already running"
+
+# Start Health Monitor (for AI agent) - using host.docker.internal for local dev
+echo "🏥 Starting Health Monitor..."
+docker rm -f health-monitor-standalone > /dev/null 2>&1 || true
+docker run -d --name health-monitor-standalone \
+    --network incident-management-simulator_incident-net \
+    -e BACKEND_URL=http://host.docker.internal:8080 \
+    -e PYTHONUNBUFFERED=1 \
+    -p 8002:8002 \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    incident-management-simulator-health-monitor > /dev/null 2>&1 && echo "   ✓ Health monitor started" || echo "   ⚠️  Health monitor failed to start"
+sleep 2
+
 # Clear any stale connections (e.g., from DBeaver)
 echo "🧹 Cleaning up stale connections..."
 PGPASSWORD=incident_pass psql -h localhost -U incident_user -d incident_db -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'incident_db' AND pid <> pg_backend_pid() AND state = 'idle' AND state_change < NOW() - INTERVAL '5 minutes';" > /dev/null 2>&1 || true
@@ -166,21 +183,39 @@ else
     FAILED=1
 fi
 
+# Check Redis Test
+if docker ps | grep -q redis-test; then
+    echo "✅ Redis Test:        Running (port 6380)"
+else
+    echo "⚠️  Redis Test:        Not running (AI agent features disabled)"
+fi
+
+# Check Health Monitor
+if docker ps | grep -q health-monitor; then
+    echo "✅ Health Monitor:    Running (monitoring Redis)"
+else
+    echo "⚠️  Health Monitor:    Not running (auto-incidents disabled)"
+fi
+
 echo ""
 if [ $FAILED -eq 0 ]; then
     echo "🎉 All services are healthy and ready!"
     echo ""
     echo "📊 Open in browser: http://localhost:5173"
-    echo "📝 View logs: ./logs.sh [service]"
-    echo "📊 Check status: ./status.sh"
-    echo "🛑 To stop: ./stop.sh"
+    echo ""
+    echo "💡 Available commands:"
+    echo "   📝 View logs:      ./scripts/logs.sh [service]"
+    echo "   📊 Check status:   ./scripts/status.sh"
+    echo "   🛑 Stop all:       ./scripts/stop.sh"
+    echo "   🔥 Break Redis:    ./scripts/break-redis.sh"
+    echo "   💊 Fix Redis:      ./scripts/fix-redis.sh"
 else
     echo "⚠️  Some services failed to start!"
     echo ""
     echo "💡 Troubleshooting:"
-    echo "   1. Check logs: ./logs.sh"
-    echo "   2. Stop all: ./stop.sh"
-    echo "   3. Try again: ./start.sh"
+    echo "   1. Check logs: ./scripts/logs.sh"
+    echo "   2. Stop all: ./scripts/stop.sh"
+    echo "   3. Try again: ./scripts/start.sh"
 fi
 echo ""
 

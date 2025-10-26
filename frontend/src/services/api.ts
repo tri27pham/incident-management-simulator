@@ -175,6 +175,19 @@ export async function getGeneratorStatus(): Promise<{ is_running: boolean }> {
   return response.json();
 }
 
+// Health Monitor API - Trigger failures
+const HEALTH_MONITOR_URL = import.meta.env.VITE_HEALTH_MONITOR_URL || 'http://localhost:8002';
+
+export async function triggerRedisMemoryFailure(): Promise<{ status: string; message: string; health: number }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/trigger/redis-memory`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to trigger Redis memory failure');
+  }
+  return response.json();
+}
+
 // WebSocket connection
 export function connectWebSocket(onMessage: (data: IncidentWithAnalysis) => void): WebSocket {
   const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api/v1', '') + '/api/v1/ws';

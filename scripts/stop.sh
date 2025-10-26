@@ -51,19 +51,37 @@ rm -f /tmp/incident-ai-new.log 2>/dev/null || true
 
 sleep 1
 
-# Stop PostgreSQL (if running in Docker)
+# Stop Docker services
+echo "📦 Stopping Docker services..."
+
 if docker ps 2>/dev/null | grep -q postgres-dev; then
-    echo "📦 Stopping PostgreSQL (Docker)..."
     docker stop postgres-dev 2>/dev/null || true
+    echo "   ✓ PostgreSQL stopped"
 else
-    echo "📦 PostgreSQL (running locally or already stopped)"
+    echo "   • PostgreSQL (running locally or already stopped)"
+fi
+
+if docker ps 2>/dev/null | grep -q redis-test; then
+    docker stop redis-test 2>/dev/null || true
+    echo "   ✓ Redis test stopped"
+fi
+
+if docker ps 2>/dev/null | grep -q health-monitor; then
+    docker stop health-monitor health-monitor-standalone 2>/dev/null || true
+    docker rm health-monitor health-monitor-standalone 2>/dev/null || true
+    echo "   ✓ Health monitor stopped"
 fi
 
 echo ""
 echo "✅ All services stopped!"
 echo ""
-echo "💡 To start again: ./start.sh or ./start-no-docker.sh"
-echo "🗑️  To remove Docker database: docker rm postgres-dev"
-echo "📝 View logs: tail -f /tmp/incident-*.log"
+echo "💡 To start again:"
+echo "   ./scripts/start.sh                  (recommended)"
+echo "   ./scripts/start-no-docker.sh        (local dev, no Docker services)"
+echo ""
+echo "🔧 Useful commands:"
+echo "   🗑️  Remove Docker containers:      docker rm postgres-dev redis-test health-monitor"
+echo "   📝 View logs:                      tail -f /tmp/incident-*.log"
+echo "   🔍 Check running processes:        ./scripts/status.sh"
 echo ""
 

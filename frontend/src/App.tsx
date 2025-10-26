@@ -183,9 +183,12 @@ function App() {
   const [isTogglingGenerator, setIsTogglingGenerator] = useState(false);
   const [showResolvedPanel, setShowResolvedPanel] = useState(false);
   const [resolvedIncidents, setResolvedIncidents] = useState<Incident[]>([]);
+  const [showFailureDropdown, setShowFailureDropdown] = useState(false);
+  const [isTriggeringFailure, setIsTriggeringFailure] = useState(false);
   
   // Use a ref to avoid WebSocket reconnections when modal changes
   const modalIncidentRef = useRef<Incident | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   
   // Keep ref in sync with state
   useEffect(() => {
@@ -206,6 +209,22 @@ function App() {
       };
     }
   }, [modalIncident, showResolvedPanel]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowFailureDropdown(false);
+      }
+    }
+
+    if (showFailureDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showFailureDropdown]);
 
   const handleToggleExpand = (id: string) => {
     setExpandedCardId(expandedCardId === id ? null : id);
@@ -248,6 +267,24 @@ function App() {
       setTimeout(() => setError(null), 3000);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleTriggerFailure = async (failureType: string) => {
+    setIsTriggeringFailure(true);
+    setShowFailureDropdown(false);
+    try {
+      if (failureType === 'redis-memory') {
+        const result = await api.triggerRedisMemoryFailure();
+        console.log('✅ Redis memory failure triggered:', result);
+        // Incident will be created automatically by health monitor within 10 seconds
+      }
+    } catch (error) {
+      console.error('Failed to trigger failure:', error);
+      setError('Failed to trigger failure');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsTriggeringFailure(false);
     }
   };
 
@@ -701,6 +738,82 @@ function App() {
                 </>
               )}
             </button>
+
+            {/* Trigger Failure Dropdown */}
+            <div className="relative" ref={dropdownRef}>
+              <button 
+                onClick={() => setShowFailureDropdown(!showFailureDropdown)}
+                disabled={isTriggeringFailure}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
+                style={{
+                  backgroundColor: `rgb(var(--card-bg))`,
+                  borderColor: `rgb(var(--border-color))`,
+                  color: `rgb(var(--text-primary))`,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isTriggeringFailure) {
+                    e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
+                    e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
+                  e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+                }}
+              >
+                {isTriggeringFailure ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Triggering...
+                  </>
+                ) : (
+                  <>
+                    <span>💥</span>
+                    Trigger Failure
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </>
+                )}
+              </button>
+
+              {/* Dropdown Menu */}
+              {showFailureDropdown && (
+                <div 
+                  className="absolute top-full mt-2 right-0 rounded-lg shadow-lg border overflow-hidden z-50"
+                  style={{
+                    backgroundColor: `rgb(var(--card-bg))`,
+                    borderColor: `rgb(var(--border-color))`,
+                    minWidth: '220px',
+                  }}
+                >
+                  <button
+                    onClick={() => handleTriggerFailure('redis-memory')}
+                    className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3"
+                    style={{
+                      color: `rgb(var(--text-primary))`,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(239, 68, 68)' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                    <div>
+                      <div className="font-medium">Overload Redis Memory</div>
+                      <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>Fill memory to 90%+</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
             
             <button 
               onClick={handleToggleGenerator}
