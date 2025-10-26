@@ -344,8 +344,8 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                   <svg 
                     className="w-4 h-4" 
                     fill="none" 
-                    stroke="white" 
                     viewBox="0 0 24 24"
+                    style={{ stroke: 'rgb(var(--text-primary))' }}
                   >
                     <path 
                       strokeLinecap="round" 
