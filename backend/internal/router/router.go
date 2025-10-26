@@ -44,6 +44,7 @@ func SetupRouter() *gin.Engine {
 		api.POST("/incidents/generate", handlers.GenerateRandomIncidentHandler)
 		api.GET("/incidents/:id", handlers.GetIncidentByIDHandler)
 		api.PATCH("/incidents/:id", handlers.UpdateIncidentHandler)
+		api.DELETE("/incidents/:id", handlers.DeleteIncidentHandler)
 		api.POST("/incidents/:id/diagnose", handlers.TriggerAIDiagnosisHandler)
 		api.POST("/incidents/:id/suggest-fix", handlers.TriggerAISuggestedFixHandler)
 	}

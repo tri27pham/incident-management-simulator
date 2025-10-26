@@ -178,12 +178,42 @@ export async function getGeneratorStatus(): Promise<{ is_running: boolean }> {
 // Health Monitor API - Trigger failures
 const HEALTH_MONITOR_URL = import.meta.env.VITE_HEALTH_MONITOR_URL || 'http://localhost:8002';
 
+export async function clearRedis(): Promise<{ status: string; message: string }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/clear/redis`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to clear Redis');
+  }
+  return response.json();
+}
+
 export async function triggerRedisMemoryFailure(): Promise<{ status: string; message: string; health: number }> {
   const response = await fetch(`${HEALTH_MONITOR_URL}/trigger/redis-memory`, {
     method: 'POST',
   });
   if (!response.ok) {
     throw new Error('Failed to trigger Redis memory failure');
+  }
+  return response.json();
+}
+
+export async function getHealthMonitorStatus(): Promise<{
+  services: {
+    'redis-test': {
+      health: number;
+      memory_used: number;
+      memory_max: number;
+      memory_percent: number;
+      status: string;
+      will_trigger_incident: boolean;
+    };
+  };
+  last_check: string;
+}> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get health monitor status');
   }
   return response.json();
 }

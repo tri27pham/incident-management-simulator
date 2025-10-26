@@ -91,6 +91,41 @@ func GetIncidentByID(id uuid.UUID) (models.Incident, error) {
 	return incident, err
 }
 
+func DeleteIncident(id uuid.UUID) error {
+	// Start a transaction to ensure all related data is deleted together
+	tx := db.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Delete status history
+	if err := tx.Where("incident_id = ?", id).Delete(&models.StatusHistory{}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete status history: %w", err)
+	}
+
+	// Delete analysis
+	if err := tx.Where("incident_id = ?", id).Delete(&models.IncidentAnalysis{}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete analysis: %w", err)
+	}
+
+	// Delete incident
+	if err := tx.Delete(&models.Incident{}, id).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete incident: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+
+	log.Printf("🗑️  Deleted incident %s and all related data", id)
+	return nil
+}
+
 func UpdateIncidentNotes(id uuid.UUID, notes string) (*models.Incident, error) {
 	var incident models.Incident
 	if err := db.DB.
@@ -389,9 +424,10 @@ func GenerateRandomIncident() (models.Incident, error) {
 	}
 
 	return models.Incident{
-		Message:     incidentData.Message,
-		Source:      incidentData.Source,
-		Status:      "triage",
-		GeneratedBy: incidentData.Provider, // Track which AI generated this
+		Message:         incidentData.Message,
+		Source:          incidentData.Source,
+		Status:          "triage",
+		GeneratedBy:     incidentData.Provider, // Track which AI generated this
+		MetricsSnapshot: "{}",                  // Empty JSON object for manually generated incidents
 	}, nil
 }

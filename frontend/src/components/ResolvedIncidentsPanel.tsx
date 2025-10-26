@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { Incident } from '../types';
+import { useState } from 'react';
 import { SeverityBars } from './SeverityBars';
 
 interface ResolvedIncidentsPanelProps {

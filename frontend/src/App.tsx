@@ -185,10 +185,15 @@ function App() {
   const [resolvedIncidents, setResolvedIncidents] = useState<Incident[]>([]);
   const [showFailureDropdown, setShowFailureDropdown] = useState(false);
   const [isTriggeringFailure, setIsTriggeringFailure] = useState(false);
+  const [progressBar, setProgressBar] = useState<{ show: boolean; message: string; progress: number } | null>(null);
+  const [isFixingAll, setIsFixingAll] = useState(false);
+  const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
   
   // Use a ref to avoid WebSocket reconnections when modal changes
   const modalIncidentRef = useRef<Incident | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const progressIntervalRef = useRef<number | null>(null);
+  const waitingForRedisIncident = useRef<boolean>(false);
   
   // Keep ref in sync with state
   useEffect(() => {
@@ -210,7 +215,7 @@ function App() {
     }
   }, [modalIncident, showResolvedPanel]);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside and fetch Redis status when opening
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -219,12 +224,35 @@ function App() {
     }
 
     if (showFailureDropdown) {
+      // Fetch Redis status when dropdown opens
+      async function fetchRedisStatus() {
+        try {
+          const status = await api.getHealthMonitorStatus();
+          const memoryPercent = status.services['redis-test'].memory_percent;
+          setRedisMemoryPercent(memoryPercent);
+          console.log(`📊 Redis memory: ${memoryPercent}%`);
+        } catch (error) {
+          console.error('Failed to fetch Redis status:', error);
+          setRedisMemoryPercent(null);
+        }
+      }
+      fetchRedisStatus();
+      
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
   }, [showFailureDropdown]);
+
+  // Cleanup progress interval on unmount
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+      }
+    };
+  }, []);
 
   const handleToggleExpand = (id: string) => {
     setExpandedCardId(expandedCardId === id ? null : id);
@@ -270,19 +298,221 @@ function App() {
     }
   };
 
-  const handleTriggerFailure = async (failureType: string) => {
+  const handleReset = async () => {
+    setIsFixingAll(true);
+    
+    // Close any open modal
+    setModalIncident(null);
+    
+    try {
+      console.log(`🔄 Resetting system...`);
+      
+      // Step 1: Clear Redis to restore service health
+      console.log('🧹 Clearing Redis memory...');
+      try {
+        await api.clearRedis();
+        console.log('✅ Redis cleared');
+      } catch (clearError) {
+        console.error('Failed to clear Redis:', clearError);
+        setError('Failed to restore Redis health');
+        setTimeout(() => setError(null), 3000);
+        setIsFixingAll(false);
+        return;
+      }
+
+      // Step 2: Get all incidents (active + resolved)
+      const allActiveIncidents = [
+        ...board.Triage.items,
+        ...board.Investigating.items,
+        ...board.Fixing.items
+      ];
+      const allIncidentIds = [
+        ...allActiveIncidents.map(inc => inc.id),
+        ...resolvedIncidents.map(inc => inc.id)
+      ];
+
+      console.log(`🗑️  Deleting ${allIncidentIds.length} incidents...`);
+
+      // Step 3: Immediately clear UI
+      setBoard({
+        Triage: { name: 'Triage', items: [] },
+        Investigating: { name: 'Investigating', items: [] },
+        Fixing: { name: 'Fixing', items: [] },
+      });
+      setResolvedIncidents([]);
+      console.log('✅ UI cleared');
+
+      // Step 4: Delete incidents from backend (fire-and-forget)
+      if (allIncidentIds.length > 0) {
+        const deletePromises = allIncidentIds.map(id =>
+          fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/v1/incidents/${id}`, {
+            method: 'DELETE',
+          }).catch(err => {
+            console.error(`Failed to delete incident ${id}:`, err);
+            return null;
+          })
+        );
+
+        // Don't wait for all deletes, just fire them off
+        Promise.all(deletePromises).then(() => {
+          console.log(`✅ Deleted ${allIncidentIds.length} incidents from backend`);
+        }).catch(err => {
+          console.error('Some incidents failed to delete:', err);
+        });
+      }
+
+      console.log('✅ System reset complete');
+
+    } catch (error) {
+      console.error('Unexpected error in Reset:', error);
+      setError('Failed to reset system');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsFixingAll(false);
+    }
+  };
+
+  const handleOverloadRedis = async () => {
     setIsTriggeringFailure(true);
     setShowFailureDropdown(false);
+    
     try {
-      if (failureType === 'redis-memory') {
-        const result = await api.triggerRedisMemoryFailure();
-        console.log('✅ Redis memory failure triggered:', result);
-        // Incident will be created automatically by health monitor within 10 seconds
+      // Clear Redis first to ensure clean test
+      console.log('🧹 Clearing Redis...');
+      setProgressBar({ 
+        show: true, 
+        message: 'Preparing Redis...', 
+        progress: 0 
+      });
+      
+      await api.clearRedis();
+      console.log('✅ Redis cleared');
+      
+      // Small delay to let the clear propagate
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Get initial state
+      const initialStatus = await api.getHealthMonitorStatus();
+      const initialMemory = initialStatus.services['redis-test'].memory_percent;
+      
+      console.log(`🎬 Starting Redis fill - Initial memory: ${initialMemory}%`);
+      
+      // Show progress bar with initial state
+      setProgressBar({ 
+        show: true, 
+        message: `Starting from ${initialMemory.toFixed(1)}% memory...`, 
+        progress: initialMemory 
+      });
+      waitingForRedisIncident.current = true;
+      
+      // Start polling immediately before triggering
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
       }
+      
+      progressIntervalRef.current = window.setInterval(async () => {
+        try {
+          const status = await api.getHealthMonitorStatus();
+          const redisStatus = status.services['redis-test'];
+          const memoryPercent = redisStatus.memory_percent;
+          
+          console.log(`📊 Redis memory: ${memoryPercent}% full (Health: ${redisStatus.health}%)`);
+          
+          // Update progress bar based on real memory usage
+          let progress = memoryPercent;
+          let message = '';
+          
+          if (memoryPercent < 30) {
+            message = `Filling Redis memory... ${memoryPercent.toFixed(1)}%`;
+          } else if (memoryPercent < 70) {
+            message = `Redis memory: ${memoryPercent.toFixed(1)}% full`;
+          } else if (memoryPercent < 90) {
+            message = `Redis memory: ${memoryPercent.toFixed(1)}% full (approaching threshold)`;
+          } else {
+            message = `Waiting for incident detection... (Memory: ${memoryPercent.toFixed(1)}%)`;
+            // Cap at 95% while waiting for incident
+            progress = Math.min(95, 90 + (memoryPercent - 90) / 2);
+          }
+          
+          setProgressBar({ show: true, message, progress });
+          
+        } catch (pollError) {
+          console.error('Failed to poll health status:', pollError);
+        }
+      }, 300); // Poll every 300ms for faster updates during fill
+      
+      // Trigger the failure (this happens in parallel with polling)
+      const result = await api.triggerRedisMemoryFailure();
+      console.log('✅ Redis memory failure triggered:', result);
+      
+      // Fallback: After 12 seconds, check if incident was created
+      setTimeout(async () => {
+        if (waitingForRedisIncident.current) {
+          console.log('⏰ Checking if incident was created...');
+          try {
+            // Poll backend for new redis-test incidents
+            const incidents = await api.fetchIncidents();
+            const redisIncidents = incidents.filter((inc: any) => inc.source === 'redis-test');
+            
+            if (redisIncidents.length > 0) {
+              console.log('✅ Found redis-test incident - completing progress bar');
+              setProgressBar({ show: true, message: 'Incident detected!', progress: 100 });
+              
+              // Reload board to show the new incident
+              const [backendIncidents, backendResolvedIncidents] = await Promise.all([
+                api.fetchIncidents(),
+                api.fetchResolvedIncidents(),
+              ]);
+              
+              const newBoard: IncidentBoardState = {
+                Triage: { name: 'Triage', items: [] },
+                Investigating: { name: 'Investigating', items: [] },
+                Fixing: { name: 'Fixing', items: [] },
+              };
+
+              backendIncidents.forEach((backendIncident) => {
+                const incident = mapBackendIncidentToFrontend(backendIncident);
+                const status = mapBackendStatusToFrontend(backendIncident.status);
+                newBoard[status].items.push(incident);
+              });
+
+              const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
+              setBoard(newBoard);
+              setResolvedIncidents(resolved);
+              
+              // Clear progress bar after 2 seconds
+              setTimeout(() => {
+                setProgressBar(null);
+                waitingForRedisIncident.current = false;
+              }, 2000);
+            } else {
+              console.log('❌ No redis-test incident found');
+              setProgressBar({ show: true, message: 'No incident created - refresh page', progress: 95 });
+              setTimeout(() => setProgressBar(null), 3000);
+            }
+          } catch (error) {
+            console.error('Failed to check for incident:', error);
+            setProgressBar(null);
+          }
+          
+          // Stop polling
+          if (progressIntervalRef.current) {
+            window.clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+          }
+          waitingForRedisIncident.current = false;
+        }
+      }, 12000);
+      
     } catch (error) {
       console.error('Failed to trigger failure:', error);
       setError('Failed to trigger failure');
       setTimeout(() => setError(null), 3000);
+      setProgressBar(null);
+      waitingForRedisIncident.current = false;
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+      }
     } finally {
       setIsTriggeringFailure(false);
     }
@@ -531,6 +761,27 @@ function App() {
       
       console.log(`✨ Processing incident ${incident.incidentNumber} -> ${status}`);
       
+      // Check if this is a redis-test incident (complete progress bar)
+      console.log('🔍 Checking incident source:', {
+        source: data.source,
+        waitingFlag: waitingForRedisIncident.current,
+        willComplete: data.source === 'redis-test' && waitingForRedisIncident.current
+      });
+      
+      if (data.source === 'redis-test' && waitingForRedisIncident.current) {
+        console.log('🎯 Redis incident detected - completing progress bar');
+        setProgressBar({ show: true, message: 'Incident created!', progress: 100 });
+        waitingForRedisIncident.current = false;
+        if (progressIntervalRef.current) {
+          window.clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+        // Hide progress bar after 1.5 seconds
+        setTimeout(() => {
+          setProgressBar(null);
+        }, 1500);
+      }
+      
       // Update modal if it's open for this incident (use ref to avoid reconnection)
       if (modalIncidentRef.current?.id === incident.id) {
         setModalIncident(incident);
@@ -624,6 +875,9 @@ function App() {
   const totalIncidents = Object.values(filteredBoard).reduce((sum, col) => sum + col.items.length, 0);
 
   const onDragEnd = async (result: DropResult) => {
+    // Prevent drag operations while fixing all incidents
+    if (isFixingAll) return;
+    
     const { source, destination } = result;
     if (!destination) return;
 
@@ -687,6 +941,37 @@ function App() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: `rgb(var(--bg-primary))` }}>
+      {/* Progress Bar */}
+      {progressBar?.show && (
+        <div className="fixed top-0 left-0 right-0 z-50" style={{ backgroundColor: `rgb(var(--bg-secondary))`, borderBottom: `1px solid rgb(var(--border-color))` }}>
+          <div className="px-6 py-3">
+            <div className="max-w-7xl mx-auto">
+              <div className="flex items-center gap-3 mb-2">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24" style={{ color: 'rgb(249, 115, 22)' }}>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-sm font-medium" style={{ color: `rgb(var(--text-primary))` }}>
+                  {progressBar.message}
+                </span>
+                <span className="text-xs ml-auto" style={{ color: `rgb(var(--text-tertiary))` }}>
+                  {Math.round(progressBar.progress)}%
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                <div 
+                  className="h-full transition-all duration-200 ease-out"
+                  style={{ 
+                    width: `${progressBar.progress}%`,
+                    backgroundColor: progressBar.progress === 100 ? 'rgb(34, 197, 94)' : 'rgb(249, 115, 22)'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <header className="px-6 py-4" style={{ 
         backgroundColor: `rgb(var(--bg-secondary))`,
@@ -705,7 +990,7 @@ function App() {
           <div className="flex items-center gap-3">
             <button 
               onClick={handleGenerateIncident}
-              disabled={isGenerating}
+              disabled={isGenerating || isFixingAll}
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
               style={{
                 backgroundColor: `rgb(var(--card-bg))`,
@@ -743,7 +1028,7 @@ function App() {
             <div className="relative" ref={dropdownRef}>
               <button 
                 onClick={() => setShowFailureDropdown(!showFailureDropdown)}
-                disabled={isTriggeringFailure}
+                disabled={isTriggeringFailure || isFixingAll}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
                 style={{
                   backgroundColor: `rgb(var(--card-bg))`,
@@ -783,32 +1068,47 @@ function App() {
               {/* Dropdown Menu */}
               {showFailureDropdown && (
                 <div 
-                  className="absolute top-full mt-2 right-0 rounded-lg shadow-lg border overflow-hidden z-50"
+                  className="absolute top-full mt-2 right-0 rounded-lg shadow-lg border z-50 p-3"
                   style={{
                     backgroundColor: `rgb(var(--card-bg))`,
                     borderColor: `rgb(var(--border-color))`,
-                    minWidth: '220px',
+                    minWidth: '240px',
                   }}
                 >
                   <button
-                    onClick={() => handleTriggerFailure('redis-memory')}
-                    className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3"
+                    onClick={handleOverloadRedis}
+                    disabled={redisMemoryPercent !== null && redisMemoryPercent > 90}
+                    className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed"
                     style={{
                       color: `rgb(var(--text-primary))`,
+                      backgroundColor: `rgb(var(--bg-secondary))`,
+                      borderColor: `rgb(var(--border-color))`,
+                      opacity: (redisMemoryPercent !== null && redisMemoryPercent > 90) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
+                      if (redisMemoryPercent === null || redisMemoryPercent <= 90) {
+                        e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
+                        e.currentTarget.style.transform = 'scale(1.02)';
+                      }
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
+                      if (redisMemoryPercent === null || redisMemoryPercent <= 90) {
+                        e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }
                     }}
                   >
                     <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(239, 68, 68)' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                     </svg>
-                    <div>
+                    <div className="flex-1">
                       <div className="font-medium">Overload Redis Memory</div>
-                      <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>Fill memory to 90%+</div>
+                      <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
+                        {redisMemoryPercent !== null && redisMemoryPercent > 90 
+                          ? `Already full (${redisMemoryPercent.toFixed(1)}%)`
+                          : 'Fill memory to 90%+'
+                        }
+                      </div>
                     </div>
                   </button>
                 </div>
@@ -817,7 +1117,7 @@ function App() {
             
             <button 
               onClick={handleToggleGenerator}
-              disabled={isTogglingGenerator}
+              disabled={isTogglingGenerator || isFixingAll}
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
               style={{
                 backgroundColor: generatorRunning ? 'rgb(249, 115, 22)' : `rgb(var(--card-bg))`,
@@ -852,6 +1152,45 @@ function App() {
                 <>
                   <span>▶</span>
                   Start Generator
+                </>
+              )}
+            </button>
+
+            {/* Reset Button */}
+            <button 
+              onClick={handleReset}
+              disabled={isFixingAll}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
+              style={{
+                backgroundColor: `rgb(var(--card-bg))`,
+                borderColor: `rgb(var(--border-color))`,
+                color: `rgb(var(--text-primary))`,
+              }}
+              onMouseEnter={(e) => {
+                if (!isFixingAll) {
+                  e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
+                  e.currentTarget.style.borderColor = 'rgb(59, 130, 246)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
+                e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+              }}
+            >
+              {isFixingAll ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(59, 130, 246)' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Reset
                 </>
               )}
             </button>
@@ -920,15 +1259,20 @@ function App() {
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => setShowResolvedPanel(true)}
-                className="text-sm flex items-center gap-1 cursor-pointer group"
+                disabled={isFixingAll}
+                className="text-sm flex items-center gap-1 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   color: `rgb(var(--text-secondary))`
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.color = 'rgb(249, 115, 22)';
+                  if (!isFixingAll) {
+                    e.currentTarget.style.color = 'rgb(249, 115, 22)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.color = `rgb(var(--text-secondary))`;
+                  if (!isFixingAll) {
+                    e.currentTarget.style.color = `rgb(var(--text-secondary))`;
+                  }
                 }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ transition: 'none' }}>
@@ -986,6 +1330,45 @@ function App() {
         onClose={() => setShowResolvedPanel(false)}
         incidents={resolvedIncidents}
       />
+
+      {/* Full-page blocking overlay while fixing all incidents */}
+      {isFixingAll && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div 
+            className="flex flex-col items-center gap-4 p-8 rounded-lg"
+            style={{
+              backgroundColor: `rgb(var(--card-bg))`,
+              border: `2px solid rgb(249, 115, 22)`,
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <svg 
+              className="animate-spin h-12 w-12" 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24"
+              style={{ color: 'rgb(249, 115, 22)' }}
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <div className="text-center">
+              <p className="text-lg font-semibold mb-1" style={{ color: `rgb(var(--text-primary))` }}>
+                Resetting System
+              </p>
+              <p className="text-sm" style={{ color: `rgb(var(--text-secondary))` }}>
+                Clearing services and deleting incidents...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

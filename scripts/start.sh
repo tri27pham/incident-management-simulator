@@ -87,7 +87,7 @@ docker run -d --name health-monitor-standalone \
     -e PYTHONUNBUFFERED=1 \
     -p 8002:8002 \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    incident-management-simulator-health-monitor > /dev/null 2>&1 && echo "   ✓ Health monitor started" || echo "   ⚠️  Health monitor failed to start"
+    health-monitor > /dev/null 2>&1 && echo "   ✓ Health monitor started" || echo "   ⚠️  Health monitor failed to start"
 sleep 2
 
 # Clear any stale connections (e.g., from DBeaver)

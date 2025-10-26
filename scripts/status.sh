@@ -94,6 +94,39 @@ else
     ALL_GOOD=false
 fi
 
+# Check Redis Test
+if docker ps 2>/dev/null | grep -q redis-test; then
+    echo "✅ Redis Test:        Running (Docker: redis-test)"
+    # Check Redis memory
+    REDIS_INFO=$(docker exec redis-test redis-cli INFO memory 2>/dev/null | grep "used_memory:" | head -1 | cut -d: -f2 | tr -d '\r')
+    if [ ! -z "$REDIS_INFO" ]; then
+        REDIS_MB=$((REDIS_INFO / 1024 / 1024))
+        echo "   └─ Memory:         ${REDIS_MB}MB / 50MB"
+    fi
+else
+    echo "⚠️  Redis Test:        STOPPED (AI agent features disabled)"
+fi
+
+# Check Health Monitor
+if docker ps 2>/dev/null | grep -q health-monitor; then
+    if curl -s http://localhost:8002/health > /dev/null 2>&1; then
+        echo "✅ Health Monitor:    Running (Docker)"
+        echo "   └─ API:            http://localhost:8002 ✓"
+        # Check what services it's monitoring
+        HEALTH_STATUS=$(curl -s http://localhost:8002/status 2>/dev/null)
+        if [ ! -z "$HEALTH_STATUS" ]; then
+            REDIS_HEALTH=$(echo "$HEALTH_STATUS" | grep -o '"health":[0-9]*' | head -1 | cut -d: -f2)
+            if [ ! -z "$REDIS_HEALTH" ]; then
+                echo "   └─ Redis Health:   ${REDIS_HEALTH}%"
+            fi
+        fi
+    else
+        echo "⚠️  Health Monitor:    Running but NOT RESPONDING"
+    fi
+else
+    echo "⚠️  Health Monitor:    STOPPED (auto-incidents disabled)"
+fi
+
 echo ""
 echo "========================================"
 if [ "$ALL_GOOD" = true ]; then

@@ -197,3 +197,19 @@ func GenerateRandomIncidentHandler(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, incident)
 }
+
+func DeleteIncidentHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid incident ID format"})
+		return
+	}
+
+	if err := services.DeleteIncident(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete incident"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Incident deleted successfully"})
+}

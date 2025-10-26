@@ -30,12 +30,12 @@ case $SERVICE in
     health|monitor|health-monitor)
         echo "🏥 Viewing Health Monitor logs (Ctrl+C to exit)..."
         echo ""
-        docker-compose logs -f health-monitor
+        docker logs -f health-monitor-standalone 2>/dev/null || docker logs -f health-monitor 2>/dev/null || echo "❌ Health monitor not running"
         ;;
     redis|redis-test)
         echo "🔴 Viewing Redis Test logs (Ctrl+C to exit)..."
         echo ""
-        docker-compose logs -f redis-test
+        docker logs -f redis-test 2>/dev/null || echo "❌ Redis test not running"
         ;;
     all|*)
         echo "📊 Viewing ALL logs (Ctrl+C to exit)..."
