@@ -178,27 +178,42 @@ export async function getGeneratorStatus(): Promise<{ is_running: boolean }> {
 // WebSocket connection
 export function connectWebSocket(onMessage: (data: IncidentWithAnalysis) => void): WebSocket {
   const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api/v1', '') + '/api/v1/ws';
+  console.log('🔌 Connecting to WebSocket:', wsUrl);
   const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    console.log('✅ WebSocket connected');
+    console.log('✅ WebSocket connected to:', wsUrl);
+    console.log('✅ WebSocket readyState:', ws.readyState);
   };
 
   ws.onmessage = (event) => {
+    console.log('📨 Raw WebSocket message received:', event.data);
     try {
       const data = JSON.parse(event.data);
+      console.log('📦 Parsed WebSocket data:', {
+        id: data.id?.substring(0, 8),
+        message: data.message?.substring(0, 50),
+        status: data.status,
+        hasAnalysis: !!data.analysis
+      });
       onMessage(data);
+      console.log('✅ onMessage callback completed');
     } catch (error) {
-      console.error('Failed to parse WebSocket message:', error);
+      console.error('❌ Failed to parse or process WebSocket message:', error);
+      console.error('❌ Event data was:', event.data);
     }
   };
 
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+    console.error('❌ WebSocket error:', error);
+    console.error('❌ WebSocket readyState:', ws.readyState);
   };
 
-  ws.onclose = () => {
-    console.log('❌ WebSocket disconnected');
+  ws.onclose = (event) => {
+    console.log('🔌 WebSocket disconnected');
+    console.log('🔌 Close code:', event.code);
+    console.log('🔌 Close reason:', event.reason);
+    console.log('🔌 Was clean:', event.wasClean);
   };
 
   return ws;

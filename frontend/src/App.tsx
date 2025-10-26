@@ -487,20 +487,69 @@ function App() {
   // Set up WebSocket connection for real-time updates
   useEffect(() => {
     const ws = api.connectWebSocket((data) => {
-      console.log('📨 WebSocket message received:', data);
-      
-      const incident = mapBackendIncidentToFrontend(data);
-      const status = mapBackendStatusToFrontend(data.status);
-      
-      console.log(`✨ Processing incident ${incident.incidentNumber} -> ${status}`);
-      
-      // Update modal if it's open for this incident (use ref to avoid reconnection)
-      if (modalIncidentRef.current?.id === incident.id) {
-        setModalIncident(incident);
-        console.log('🔄 Updated modal incident');
+      try {
+        console.log('📨 WebSocket message received:', data);
+        
+        const incident = mapBackendIncidentToFrontend(data);
+        
+        console.log(`✨ Processing incident ${incident.incidentNumber} -> ${data.status}`);
+        
+        // Update modal if it's open for this incident (use ref to avoid reconnection)
+        if (modalIncidentRef.current?.id === incident.id) {
+          setModalIncident(incident);
+          console.log('🔄 Updated modal incident');
+        }
+        
+        // Special handling for resolved incidents
+        if (data.status === 'resolved') {
+        console.log(`🎯 Incident ${incident.incidentNumber} is resolved, removing from board and adding to resolved list`);
+        
+        // Remove from board
+        setBoard((prevBoard) => {
+          const newBoard: IncidentBoardState = {
+            Triage: { ...prevBoard.Triage, items: [...prevBoard.Triage.items] },
+            Investigating: { ...prevBoard.Investigating, items: [...prevBoard.Investigating.items] },
+            Fixing: { ...prevBoard.Fixing, items: [...prevBoard.Fixing.items] },
+          };
+          
+          // Find and remove from any column
+          for (const columnKey of Object.keys(newBoard) as Array<keyof IncidentBoardState>) {
+            const index = newBoard[columnKey].items.findIndex(i => i.id === incident.id);
+            if (index >= 0) {
+              newBoard[columnKey].items.splice(index, 1);
+              console.log(`🗑️ Removed incident ${incident.incidentNumber} from ${columnKey} column`);
+              break;
+            }
+          }
+          
+          return newBoard;
+        });
+        
+        // Add to resolved incidents (if not already there)
+        setResolvedIncidents((prev) => {
+          const exists = prev.some(i => i.id === incident.id);
+          if (!exists) {
+            console.log(`✅ Added incident ${incident.incidentNumber} to resolved list`);
+            return [incident, ...prev];
+          } else {
+            // Update existing resolved incident
+            console.log(`🔄 Updated resolved incident ${incident.incidentNumber}`);
+            return prev.map(i => i.id === incident.id ? incident : i);
+          }
+        });
+        
+        // Close modal if this incident is resolved
+        if (modalIncidentRef.current?.id === incident.id) {
+          setModalIncident(null);
+          console.log('🔄 Closed modal for resolved incident');
+        }
+        
+        return; // Don't process further for resolved incidents
       }
       
-      // Update the board with new/updated incident
+      // Update the board with new/updated incident (for active statuses only)
+      const status = mapBackendStatusToFrontend(data.status);
+      
       setBoard((prevBoard) => {
         const newBoard: IncidentBoardState = {
           Triage: { ...prevBoard.Triage, items: [...prevBoard.Triage.items] },
@@ -525,7 +574,13 @@ function App() {
           // Incident exists in the board
           if (existingColumnKey === status) {
             // Same column - update in place (preserve position)
-            newBoard[status].items[existingIndex] = incident;
+            // Create a new array to trigger React re-render
+            const updatedItems = [...newBoard[status].items];
+            updatedItems[existingIndex] = incident;
+            newBoard[status] = {
+              ...newBoard[status],
+              items: updatedItems
+            };
             console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
           } else {
             // Different column - remove from old, add to new
@@ -541,6 +596,10 @@ function App() {
         
         return newBoard;
       });
+      } catch (error) {
+        console.error('❌ Error processing WebSocket message in App:', error);
+        console.error('❌ Data that caused error:', data);
+      }
     });
 
     return () => {

@@ -206,15 +206,23 @@ func BroadcastIncidentUpdate(id uuid.UUID) {
 // RunFullAnalysisPipeline performs the complete AI analysis and broadcasts updates.
 func RunFullAnalysisPipeline(incident models.Incident) {
 	// Step 1: Immediately broadcast the newly created incident
-	detailsNew := FullIncidentDetails{Incident: incident}
+	// Refetch to ensure StatusHistory is preloaded
+	incidentWithHistory, err := GetIncidentByID(incident.ID)
+	if err != nil {
+		log.Printf("❌ Failed to fetch incident %s for initial broadcast: %v", incident.ID.String()[:8], err)
+		// Fallback to incident without history
+		incidentWithHistory = incident
+	}
+
+	detailsNew := FullIncidentDetails{Incident: incidentWithHistory}
 	wshub.WSHub.Broadcast <- detailsNew
 	log.Printf("📡 Broadcasted new incident %s (no analysis yet)", incident.ID.String()[:8])
 
 	// Step 2: Trigger Diagnosis
 	log.Printf("🔬 Starting analysis pipeline for incident %s", incident.ID.String()[:8])
-	_, err := TriggerAIDiagnosis(incident.ID)
-	if err != nil {
-		log.Printf("❌ Error in AI diagnosis for incident %s: %v", incident.ID.String()[:8], err)
+	_, diagErr := TriggerAIDiagnosis(incident.ID)
+	if diagErr != nil {
+		log.Printf("❌ Error in AI diagnosis for incident %s: %v", incident.ID.String()[:8], diagErr)
 		return // End the pipeline if diagnosis fails
 	}
 
