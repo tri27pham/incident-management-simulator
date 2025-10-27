@@ -645,6 +645,71 @@ function App() {
     }
   };
 
+  const handleTriggerPostgresBloat = async () => {
+    setIsTriggeringFailure(true);
+    setShowFailureDropdown(false);
+    
+    try {
+      console.log('🔥 Triggering PostgreSQL table bloat...');
+      setProgressBar({ 
+        show: true, 
+        message: 'Creating table bloat (inserting and deleting rows)...', 
+        progress: 30 
+      });
+      
+      const result = await api.triggerPostgresBloat();
+      console.log('✅ PostgreSQL bloat created:', result);
+      
+      setProgressBar({ 
+        show: true, 
+        message: 'Waiting for incident detection...', 
+        progress: 70 
+      });
+      
+      // Wait for incident to be created (5 seconds per health monitor)
+      await new Promise(resolve => setTimeout(resolve, 6000));
+      
+      setProgressBar({ 
+        show: true, 
+        message: 'Incident detected!', 
+        progress: 100 
+      });
+      
+      // Reload board
+      const [backendIncidents, backendResolvedIncidents] = await Promise.all([
+        api.fetchIncidents(),
+        api.fetchResolvedIncidents(),
+      ]);
+      
+      const newBoard: IncidentBoardState = {
+        Triage: { name: 'Triage', items: [] },
+        Investigating: { name: 'Investigating', items: [] },
+        Fixing: { name: 'Fixing', items: [] },
+      };
+
+      backendIncidents.forEach((backendIncident) => {
+        const incident = mapBackendIncidentToFrontend(backendIncident);
+        const status = mapBackendStatusToFrontend(backendIncident.status);
+        newBoard[status].items.push(incident);
+      });
+
+      const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
+      setBoard(newBoard);
+      setResolvedIncidents(resolved);
+      
+      // Clear progress bar after 2 seconds
+      setTimeout(() => setProgressBar(null), 2000);
+      
+    } catch (error) {
+      console.error('Failed to trigger PostgreSQL bloat:', error);
+      setError('Failed to trigger PostgreSQL bloat');
+      setTimeout(() => setError(null), 3000);
+      setProgressBar(null);
+    } finally {
+      setIsTriggeringFailure(false);
+    }
+  };
+
   const handleToggleGenerator = async () => {
     setIsTogglingGenerator(true);
     try {
@@ -1372,6 +1437,40 @@ function App() {
                           ? `Already exhausted (${postgresIdleConnections} idle)`
                           : 'Create 12 idle connections'
                         }
+                      </div>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={handleTriggerPostgresBloat}
+                    disabled={isTriggeringFailure}
+                    className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
+                    style={{
+                      color: `rgb(var(--text-primary))`,
+                      backgroundColor: `rgb(var(--bg-secondary))`,
+                      borderColor: `rgb(var(--border-color))`,
+                      opacity: isTriggeringFailure ? 0.5 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isTriggeringFailure) {
+                        e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
+                        e.currentTarget.style.transform = 'scale(1.02)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isTriggeringFailure) {
+                        e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(234, 88, 12)' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <div className="flex-1">
+                      <div className="font-medium">Create PostgreSQL Bloat</div>
+                      <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
+                        Generate dead tuples (needs VACUUM)
                       </div>
                     </div>
                   </button>

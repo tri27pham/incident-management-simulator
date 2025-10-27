@@ -174,16 +174,18 @@ You can ONLY use these available actions:
 - "clear_redis_cache" - Clear all keys from Redis to free up memory (best for memory exhaustion)
 - "restart_redis" - Restart the Redis container to recover from error state
 - "kill_idle_connections" - Kill idle PostgreSQL connections to free up connection pool (best for connection exhaustion)
+- "vacuum_table" - Run VACUUM on PostgreSQL table to remove dead tuples and reduce bloat (best for table bloat/dead tuple issues)
 - "restart_postgres" - Restart the PostgreSQL container to recover from connection issues
 
 Choose the action that best addresses the issue. 
 - For Redis memory problems, use clear_redis_cache
-- For PostgreSQL connection problems, use kill_idle_connections
+- For PostgreSQL connection pool problems, use kill_idle_connections
+- For PostgreSQL table bloat/dead tuples, use vacuum_table
 
 Respond ONLY in valid JSON:
 {
   "analysis": "brief technical analysis of the root cause",
-  "recommended_action": "clear_redis_cache" or "restart_redis" or "kill_idle_connections" or "restart_postgres",
+  "recommended_action": "clear_redis_cache" or "restart_redis" or "kill_idle_connections" or "vacuum_table" or "restart_postgres",
   "reasoning": "why this action will fix the issue"
 }`, incident.Message, incident.Source, incident.AffectedSystems)
 
@@ -401,6 +403,22 @@ func (s *AgentService) generateCommands(action string, incident *models.Incident
 				{Level: "low", Description: "Only idle connections terminated", Mitigation: "Active queries continue unaffected"},
 			}
 
+	case "vacuum_table":
+		return []models.Command{
+				{
+					Name:        "Run VACUUM on PostgreSQL Table",
+					Command:     "http_post",
+					Args:        []string{"http://health-monitor:8002/clear/postgres-bloat"},
+					Target:      "postgres-test",
+					Description: "Run VACUUM ANALYZE to reclaim space from dead tuples and update statistics",
+				},
+			},
+			"Will reclaim space from dead tuples. Brief performance impact during execution.",
+			[]models.Risk{
+				{Level: "low", Description: "Brief performance impact while VACUUM runs", Mitigation: "Operation typically completes in seconds"},
+				{Level: "low", Description: "Table remains accessible during VACUUM", Mitigation: "PostgreSQL VACUUM does not lock tables"},
+			}
+
 	case "restart_postgres":
 		return []models.Command{
 				{
@@ -536,7 +554,7 @@ func (s *AgentService) runVerificationChecks(action string, incident *models.Inc
 	}
 
 	// For PostgreSQL actions, check health
-	if action == "kill_idle_connections" || action == "restart_postgres" {
+	if action == "kill_idle_connections" || action == "vacuum_table" || action == "restart_postgres" {
 		healthMonitorURL := os.Getenv("HEALTH_MONITOR_URL")
 		if healthMonitorURL == "" {
 			healthMonitorURL = "http://localhost:8002"

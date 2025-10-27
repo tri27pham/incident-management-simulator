@@ -224,6 +224,16 @@ export async function triggerPostgresConnectionFailure(): Promise<{ status: stri
   return response.json();
 }
 
+export async function triggerPostgresBloat(): Promise<{ status: string; message: string; health: number }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/trigger/postgres-bloat`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to trigger PostgreSQL bloat');
+  }
+  return response.json();
+}
+
 export async function getHealthMonitorStatus(): Promise<{
   services: {
     'redis-test': {

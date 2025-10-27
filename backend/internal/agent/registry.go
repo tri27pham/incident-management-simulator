@@ -27,7 +27,7 @@ var ActionableSystems = map[string]SystemInfo{
 		Name:        "postgres-test",
 		Actionable:  true,
 		Description: "Mock PostgreSQL instance for testing agent actions",
-		Actions:     []string{"kill_idle_connections", "restart"},
+		Actions:     []string{"kill_idle_connections", "vacuum_table", "restart"},
 	},
 
 	// Synthetic systems from incident generator (NOT actionable)
