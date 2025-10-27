@@ -168,8 +168,41 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
         >
           <div onClick={handleCardClick} className="cursor-pointer">
           <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium" style={{ color: `rgb(var(--card-text-secondary))` }}>{item.incidentNumber}</span>
+              {/* Subtle agent classification icons */}
+              {item.actionable && item.incidentType === 'real_system' && (
+                <span 
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  title="AI Agent Ready - can take automated actions"
+                >
+                  🤖
+                </span>
+              )}
+              {item.incidentType === 'synthetic' && (
+                <span 
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  title="Synthetic - training scenario"
+                >
+                  📝
+                </span>
+              )}
+              {item.incidentType === 'training' && (
+                <span 
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  title="Training scenario"
+                >
+                  🎓
+                </span>
+              )}
+              {item.remediationMode === 'manual' && (
+                <span 
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  title="Manual remediation required"
+                >
+                  👤
+                </span>
+              )}
             </div>
             <span className="text-xs" style={{ color: `rgb(var(--card-text-tertiary))` }}>{item.timeElapsed}</span>
           </div>
@@ -344,8 +377,9 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                   <svg 
                     className="w-4 h-4" 
                     fill="none" 
-                    stroke="white" 
+                    stroke="currentColor" 
                     viewBox="0 0 24 24"
+                    style={{ color: `rgb(var(--card-text-tertiary))` }}
                   >
                     <path 
                       strokeLinecap="round" 

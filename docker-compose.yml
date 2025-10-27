@@ -14,6 +14,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       AI_DIAGNOSIS_URL: http://ai-diagnosis:8000
+      HEALTH_MONITOR_URL: http://health-monitor:8002
     ports:
       - "8080:8080"
     networks:
@@ -42,7 +43,10 @@ services:
       - backend
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=http://localhost:8080/api/v1
     container_name: frontend
     depends_on:
       - backend
@@ -62,6 +66,35 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - incident-net
+
+  # Mock Redis service for agent testing
+  redis-test:
+    image: redis:7-alpine
+    container_name: redis-test
+    command: redis-server --maxmemory 50mb --maxmemory-policy noeviction
+    ports:
+      - "6380:6379"
+    mem_limit: 100m
+    networks:
+      - incident-net
+
+  # Health monitor service
+  health-monitor:
+    build: ./health-monitor
+    container_name: health-monitor
+    depends_on:
+      - redis-test
+      - backend
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8002:8002"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - incident-net
 

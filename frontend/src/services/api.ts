@@ -18,6 +18,12 @@ export interface BackendIncident {
   created_at: string;
   updated_at: string;
   status_history?: BackendStatusHistory[];
+  // Agent classification fields
+  incident_type?: 'real_system' | 'synthetic' | 'training';
+  actionable?: boolean;
+  affected_systems?: string[];
+  remediation_mode?: 'automated' | 'manual' | 'advisory';
+  metadata?: Record<string, any>;
 }
 
 export interface IncidentAnalysis {
@@ -175,6 +181,49 @@ export async function getGeneratorStatus(): Promise<{ is_running: boolean }> {
   return response.json();
 }
 
+// Health Monitor API - Trigger failures
+const HEALTH_MONITOR_URL = import.meta.env.VITE_HEALTH_MONITOR_URL || 'http://localhost:8002';
+
+export async function clearRedis(): Promise<{ status: string; message: string }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/clear/redis`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to clear Redis');
+  }
+  return response.json();
+}
+
+export async function triggerRedisMemoryFailure(): Promise<{ status: string; message: string; health: number }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/trigger/redis-memory`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to trigger Redis memory failure');
+  }
+  return response.json();
+}
+
+export async function getHealthMonitorStatus(): Promise<{
+  services: {
+    'redis-test': {
+      health: number;
+      memory_used: number;
+      memory_max: number;
+      memory_percent: number;
+      status: string;
+      will_trigger_incident: boolean;
+    };
+  };
+  last_check: string;
+}> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get health monitor status');
+  }
+  return response.json();
+}
+
 // WebSocket connection
 export function connectWebSocket(onMessage: (data: IncidentWithAnalysis) => void): WebSocket {
   const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api/v1', '') + '/api/v1/ws';
@@ -197,10 +246,84 @@ export function connectWebSocket(onMessage: (data: IncidentWithAnalysis) => void
     console.error('WebSocket error:', error);
   };
 
-  ws.onclose = () => {
-    console.log('❌ WebSocket disconnected');
-  };
+  // Don't set onclose here - let the caller handle reconnection logic
 
   return ws;
+}
+
+// --- AI Agent Remediation API ---
+
+export interface AgentExecutionResponse {
+  id: string;
+  incident_id: string;
+  status: string;
+  agent_model: string;
+  analysis?: string;
+  recommended_action?: string;
+  reasoning?: string;
+  commands?: any;
+  risks?: any;
+  estimated_impact?: string;
+  execution_logs?: any;
+  verification_checks?: any;
+  verification_passed?: boolean;
+  verification_notes?: string;
+  success?: boolean;
+  error_message?: string;
+  rollback_performed?: boolean;
+  dry_run: boolean;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function startAgentRemediation(incidentId: string): Promise<AgentExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/incidents/${incidentId}/agent/remediate`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to start agent remediation');
+  }
+  return response.json();
+}
+
+export async function getAgentExecution(executionId: string): Promise<AgentExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/executions/${executionId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch agent execution');
+  }
+  return response.json();
+}
+
+export async function getIncidentAgentExecutions(incidentId: string): Promise<AgentExecutionResponse[]> {
+  const response = await fetch(`${API_BASE_URL}/incidents/${incidentId}/agent/executions`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch agent executions');
+  }
+  return response.json();
+}
+
+export async function approveAgentExecution(executionId: string): Promise<AgentExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/executions/${executionId}/approve`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to approve agent execution');
+  }
+  return response.json();
+}
+
+export async function rejectAgentExecution(executionId: string): Promise<AgentExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/executions/${executionId}/reject`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to reject agent execution');
+  }
+  return response.json();
 }
 

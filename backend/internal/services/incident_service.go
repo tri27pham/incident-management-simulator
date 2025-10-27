@@ -91,6 +91,41 @@ func GetIncidentByID(id uuid.UUID) (models.Incident, error) {
 	return incident, err
 }
 
+func DeleteIncident(id uuid.UUID) error {
+	// Start a transaction to ensure all related data is deleted together
+	tx := db.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Delete status history
+	if err := tx.Where("incident_id = ?", id).Delete(&models.StatusHistory{}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete status history: %w", err)
+	}
+
+	// Delete analysis
+	if err := tx.Where("incident_id = ?", id).Delete(&models.IncidentAnalysis{}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete analysis: %w", err)
+	}
+
+	// Delete incident
+	if err := tx.Delete(&models.Incident{}, id).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete incident: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+
+	log.Printf("🗑️  Deleted incident %s and all related data", id)
+	return nil
+}
+
 func UpdateIncidentNotes(id uuid.UUID, notes string) (*models.Incident, error) {
 	var incident models.Incident
 	if err := db.DB.
@@ -205,16 +240,33 @@ func BroadcastIncidentUpdate(id uuid.UUID) {
 
 // RunFullAnalysisPipeline performs the complete AI analysis and broadcasts updates.
 func RunFullAnalysisPipeline(incident models.Incident) {
+	// Add defer to catch any panics
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("❌ PANIC in RunFullAnalysisPipeline for incident %s: %v", incident.ID.String()[:8], r)
+		}
+	}()
+
+	log.Printf("🚀 RunFullAnalysisPipeline started for incident %s (source: %s)", incident.ID.String()[:8], incident.Source)
+
 	// Step 1: Immediately broadcast the newly created incident
-	detailsNew := FullIncidentDetails{Incident: incident}
+	// Refetch to ensure we have StatusHistory loaded
+	incidentWithHistory, err := GetIncidentByID(incident.ID)
+	if err != nil {
+		log.Printf("❌ Failed to fetch incident %s for initial broadcast: %v", incident.ID.String()[:8], err)
+		// Fallback to incident without history
+		incidentWithHistory = incident
+	}
+
+	detailsNew := FullIncidentDetails{Incident: incidentWithHistory}
 	wshub.WSHub.Broadcast <- detailsNew
 	log.Printf("📡 Broadcasted new incident %s (no analysis yet)", incident.ID.String()[:8])
 
 	// Step 2: Trigger Diagnosis
 	log.Printf("🔬 Starting analysis pipeline for incident %s", incident.ID.String()[:8])
-	_, err := TriggerAIDiagnosis(incident.ID)
-	if err != nil {
-		log.Printf("❌ Error in AI diagnosis for incident %s: %v", incident.ID.String()[:8], err)
+	_, diagErr := TriggerAIDiagnosis(incident.ID)
+	if diagErr != nil {
+		log.Printf("❌ Error in AI diagnosis for incident %s: %v", incident.ID.String()[:8], diagErr)
 		return // End the pipeline if diagnosis fails
 	}
 
@@ -255,16 +307,22 @@ func TriggerAIDiagnosis(incidentID uuid.UUID) (models.IncidentAnalysis, error) {
 	var incident models.Incident
 	var analysis models.IncidentAnalysis
 
+	log.Printf("🔍 TriggerAIDiagnosis: Starting for incident %s", incidentID.String()[:8])
+
 	// 1. Find the incident to be analyzed.
 	if err := db.DB.First(&incident, incidentID).Error; err != nil {
+		log.Printf("❌ TriggerAIDiagnosis: Incident %s not found: %v", incidentID.String()[:8], err)
 		return analysis, fmt.Errorf("incident not found: %w", err)
 	}
 
+	log.Printf("🤖 TriggerAIDiagnosis: Calling AI service for incident %s", incidentID.String()[:8])
 	// 2. Call the AI service to get a diagnosis.
 	body, err := callAIService(incident.Message, "/api/v1/diagnosis")
 	if err != nil {
+		log.Printf("❌ TriggerAIDiagnosis: AI service call failed for incident %s: %v", incidentID.String()[:8], err)
 		return analysis, err
 	}
+	log.Printf("✅ TriggerAIDiagnosis: Got response from AI service for incident %s", incidentID.String()[:8])
 	var diagResp aiDiagnosisResponse
 	if err := json.Unmarshal(body, &diagResp); err != nil {
 		return analysis, fmt.Errorf("failed to decode diagnosis response: %w", err)
@@ -389,9 +447,40 @@ func GenerateRandomIncident() (models.Incident, error) {
 	}
 
 	return models.Incident{
-		Message:     incidentData.Message,
-		Source:      incidentData.Source,
-		Status:      "triage",
-		GeneratedBy: incidentData.Provider, // Track which AI generated this
+		Message:         incidentData.Message,
+		Source:          incidentData.Source,
+		Status:          "triage",
+		GeneratedBy:     incidentData.Provider, // Track which AI generated this
+		MetricsSnapshot: "{}",                  // Empty JSON object for manually generated incidents
+		// Classification: mark AI-generated incidents as synthetic (not actionable by agents)
+		IncidentType:    "synthetic",
+		Actionable:      false,
+		AffectedSystems: []string{}, // Empty - no real systems affected
+		RemediationMode: "advisory", // AI can only provide suggestions, not take actions
+		Metadata: models.JSONB{Data: map[string]interface{}{
+			"generated_by_ai": true,
+			"provider":        incidentData.Provider,
+			"scenario_type":   "training",
+		}},
 	}, nil
+}
+
+// TruncateAllTables deletes all data from all tables while preserving the schema
+func TruncateAllTables() error {
+	log.Println("🗑️  Truncating all database tables...")
+
+	// Execute TRUNCATE for all tables with CASCADE to handle foreign key constraints
+	// RESTART IDENTITY resets auto-increment sequences
+	err := db.DB.Exec(`
+		TRUNCATE TABLE incidents, incident_analysis, incident_status_history, agent_executions 
+		RESTART IDENTITY CASCADE
+	`).Error
+
+	if err != nil {
+		log.Printf("❌ Failed to truncate tables: %v", err)
+		return fmt.Errorf("failed to truncate tables: %w", err)
+	}
+
+	log.Println("✅ All tables truncated successfully")
+	return nil
 }
