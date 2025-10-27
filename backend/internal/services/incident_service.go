@@ -464,3 +464,23 @@ func GenerateRandomIncident() (models.Incident, error) {
 		}},
 	}, nil
 }
+
+// TruncateAllTables deletes all data from all tables while preserving the schema
+func TruncateAllTables() error {
+	log.Println("🗑️  Truncating all database tables...")
+
+	// Execute TRUNCATE for all tables with CASCADE to handle foreign key constraints
+	// RESTART IDENTITY resets auto-increment sequences
+	err := db.DB.Exec(`
+		TRUNCATE TABLE incidents, incident_analysis, incident_status_history, agent_executions 
+		RESTART IDENTITY CASCADE
+	`).Error
+
+	if err != nil {
+		log.Printf("❌ Failed to truncate tables: %v", err)
+		return fmt.Errorf("failed to truncate tables: %w", err)
+	}
+
+	log.Println("✅ All tables truncated successfully")
+	return nil
+}

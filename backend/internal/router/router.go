@@ -54,6 +54,9 @@ func SetupRouter() *gin.Engine {
 		api.GET("/agent/executions/:executionId", handlers.GetAgentExecutionHandler)
 		api.POST("/agent/executions/:executionId/approve", handlers.ApproveAgentExecutionHandler)
 		api.POST("/agent/executions/:executionId/reject", handlers.RejectAgentExecutionHandler)
+
+		// Database reset broadcast
+		api.POST("/reset", handlers.ResetDatabaseHandler)
 	}
 
 	return r

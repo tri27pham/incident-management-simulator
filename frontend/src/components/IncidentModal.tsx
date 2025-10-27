@@ -184,6 +184,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
       onClick={onClose}
     >
       <div 
@@ -570,9 +571,13 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                     <h3 className="text-sm font-semibold text-primary">AI Agent Remediation</h3>
                     <span 
                       className="px-2 py-0.5 rounded text-xs font-medium"
-                      style={{ backgroundColor: 'rgb(34, 197, 94)', color: 'white' }}
+                      style={{ 
+                        border: '1px solid rgb(34, 197, 94)',
+                        color: 'rgb(34, 197, 94)',
+                        backgroundColor: 'transparent'
+                      }}
                     >
-                      🤖 Automated
+                      Automated
                     </span>
                   </div>
                   <AgentWorkflow 

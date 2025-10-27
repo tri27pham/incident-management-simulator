@@ -44,70 +44,50 @@ fi
 if [ "$USING_DOCKER" = true ]; then
     echo "🔄 Resetting Docker container: $CONTAINER_NAME..."
     
-    # Terminate all connections to the database
-    echo "🔌 Terminating active connections..."
-    docker exec -i "$CONTAINER_NAME" psql -U $DB_USER -d postgres -c "
-        SELECT pg_terminate_backend(pid) 
-        FROM pg_stat_activity 
-        WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();
-    " 2>/dev/null
+    # Stop ALL services to release database connections and prevent auto-creation
+    echo "🛑 Stopping all service containers..."
+    docker-compose stop backend health-monitor ai-diagnosis 2>/dev/null || true
+    sleep 3
     
-    # Drop and recreate the database
-    echo "🗑️  Dropping database via Docker..."
-    docker exec -i "$CONTAINER_NAME" psql -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null
+    # Truncate all tables to delete all data
+    echo "🗑️  Truncating all tables..."
+    TRUNCATE_OUTPUT=$(docker exec -i "$CONTAINER_NAME" psql -U $DB_USER -d $DB_NAME <<-EOSQL 2>&1
+        -- Truncate all tables with CASCADE to handle foreign key constraints
+        TRUNCATE TABLE incidents, incident_analysis, incident_status_history, agent_executions RESTART IDENTITY CASCADE;
+EOSQL
+    )
     
-    echo "📦 Creating fresh database via Docker..."
-    docker exec -i "$CONTAINER_NAME" psql -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;" 2>/dev/null
+    if echo "$TRUNCATE_OUTPUT" | grep -q "TRUNCATE TABLE"; then
+        echo "   ✓ All tables truncated successfully"
+    else
+        echo "   ⚠️  Output: $TRUNCATE_OUTPUT"
+    fi
     
-    echo "✅ Database reset complete!"
+    echo "✅ Database cleared!"
 else
-    echo "🗑️  Dropping database..."
-    PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null
-    
-    echo "📦 Creating fresh database..."
-    PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;" 2>/dev/null
-    
-    echo "✅ Database reset complete!"
+    echo "🗑️  Truncating all tables..."
+    PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "TRUNCATE TABLE incidents, incident_analysis, incident_status_history, agent_executions RESTART IDENTITY CASCADE;" 2>/dev/null
+    echo "✅ Database cleared!"
 fi
 
 echo ""
-echo "🗄️  Running database migrations..."
 
-# Get the script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Run migrations
-MIGRATION_COUNT=0
+# Restart all services that were stopped
 if [ "$USING_DOCKER" = true ]; then
-    for migration in "$SCRIPT_DIR"/../backend/migrations/*.sql; do
-        if [ -f "$migration" ]; then
-            MIGRATION_NAME=$(basename "$migration")
-            echo "   📄 Applying $MIGRATION_NAME..."
-            if docker exec -i "$CONTAINER_NAME" psql -U $DB_USER -d $DB_NAME < "$migration" > /dev/null 2>&1; then
-                ((MIGRATION_COUNT++))
-            else
-                echo "      ⚠️  Warning: Migration may have already been applied"
-            fi
-        fi
-    done
-else
-    for migration in "$SCRIPT_DIR"/../backend/migrations/*.sql; do
-        if [ -f "$migration" ]; then
-            MIGRATION_NAME=$(basename "$migration")
-            echo "   📄 Applying $MIGRATION_NAME..."
-            if PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME < "$migration" > /dev/null 2>&1; then
-                ((MIGRATION_COUNT++))
-            else
-                echo "      ⚠️  Warning: Migration may have already been applied"
-            fi
-        fi
-    done
+    echo "🔄 Restarting all service containers..."
+    docker-compose start backend health-monitor ai-diagnosis 2>/dev/null || true
+    sleep 3
+    echo "   ✓ Services restarted"
+    
+    # Broadcast reset to connected clients
+    echo "📡 Broadcasting reset to connected frontends..."
+    sleep 1  # Give backend a moment to fully start
+    curl -X POST http://localhost:8080/api/v1/reset -s > /dev/null 2>&1 || echo "   ⚠️  Could not broadcast (backend may still be starting)"
+    echo "   ✓ Reset broadcast sent"
 fi
 
 echo ""
-echo "✅ Database reset and migrations complete!"
-echo ""
-echo "💡 The database is ready with a fresh schema."
-echo "💡 You can now use the system normally."
+echo "💡 All data has been cleared from all tables."
+echo "💡 All connected frontends have been notified to clear their cache."
 echo ""
 

@@ -252,3 +252,28 @@ func DeleteIncidentHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Incident deleted successfully"})
 }
+
+// ResetDatabaseHandler truncates all database tables and broadcasts reset to connected clients
+func ResetDatabaseHandler(c *gin.Context) {
+	log.Println("🔄 Resetting database - truncating all tables...")
+
+	// Truncate all tables
+	if err := services.TruncateAllTables(); err != nil {
+		log.Printf("❌ Failed to truncate tables: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset database"})
+		return
+	}
+
+	log.Println("✅ All tables truncated successfully")
+
+	// Broadcast reset event via WebSocket
+	resetMessage := map[string]interface{}{
+		"type":    "reset",
+		"message": "Database has been reset",
+	}
+
+	wshub.WSHub.Broadcast <- resetMessage
+	log.Println("📡 Reset broadcast sent to all connected clients")
+
+	c.JSON(http.StatusOK, gin.H{"message": "Database reset complete"})
+}

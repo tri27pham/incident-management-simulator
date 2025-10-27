@@ -368,49 +368,30 @@ function App() {
         return;
       }
 
-      // Step 2: Get all incidents (active + resolved)
-      const allActiveIncidents = [
-        ...board.Triage.items,
-        ...board.Investigating.items,
-        ...board.Fixing.items
-      ];
-      const allIncidentIds = [
-        ...allActiveIncidents.map(inc => inc.id),
-        ...resolvedIncidents.map(inc => inc.id)
-      ];
-
-      console.log(`🗑️  Step 2: Deleting ${allIncidentIds.length} incidents...`);
-
-      // Step 3: Immediately clear UI
-      setBoard({
-        Triage: { name: 'Triage', items: [] },
-        Investigating: { name: 'Investigating', items: [] },
-        Fixing: { name: 'Fixing', items: [] },
-      });
-      setResolvedIncidents([]);
-      console.log('✅ Step 3: UI cleared (0 incidents displayed)');
-
-      // Step 4: Delete incidents from backend (fire-and-forget)
-      if (allIncidentIds.length > 0) {
-        console.log(`🔄 Step 4: Sending delete requests for ${allIncidentIds.length} incidents to backend...`);
-        const deletePromises = allIncidentIds.map(id =>
-          fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/v1/incidents/${id}`, {
-            method: 'DELETE',
-          }).catch(err => {
-            console.error(`❌ Failed to delete incident ${id}:`, err);
-            return null;
-          })
-        );
-
-        // Don't wait for all deletes, just fire them off
-        Promise.all(deletePromises).then(() => {
-          console.log(`✅ Successfully deleted ${allIncidentIds.length} incidents from backend`);
-        }).catch(err => {
-          console.error('❌ Some incidents failed to delete:', err);
+      // Step 2: Call backend reset endpoint to truncate all database tables
+      console.log('🗑️  Step 2: Truncating all database tables...');
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1'}/reset`, {
+          method: 'POST',
         });
-      } else {
-        console.log('ℹ️  No incidents to delete');
+        
+        if (!response.ok) {
+          throw new Error('Failed to reset database');
+        }
+        
+        console.log('✅ Database reset successful - all tables truncated');
+      } catch (resetError) {
+        console.error('❌ Failed to reset database:', resetError);
+        setError('Failed to reset database');
+        setTimeout(() => setError(null), 3000);
+        setIsFixingAll(false);
+        return;
       }
+
+      // Step 3: Clear UI (WebSocket will also send reset message, but clear immediately for better UX)
+      setBoard(emptyBoardState);
+      setResolvedIncidents([]);
+      console.log('✅ Step 3: UI cleared');
 
       console.log('✅ ========== SYSTEM RESET COMPLETE ==========');
 
@@ -818,6 +799,15 @@ function App() {
           
           // Reset reconnect attempts on successful message
           reconnectAttempts = 0;
+          
+          // Check if this is a reset message
+          if ((data as any).type === 'reset') {
+            console.log('🔄 Database reset detected - clearing all incidents from UI');
+            setBoard(emptyBoardState);
+            setResolvedIncidents([]);
+            setModalIncident(null);
+            return;
+          }
           
           const incident = mapBackendIncidentToFrontend(data);
           const isResolved = data.status === 'resolved';
