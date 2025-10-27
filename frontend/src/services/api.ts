@@ -240,9 +240,7 @@ export function connectWebSocket(onMessage: (data: IncidentWithAnalysis) => void
     console.error('WebSocket error:', error);
   };
 
-  ws.onclose = () => {
-    console.log('❌ WebSocket disconnected');
-  };
+  // Don't set onclose here - let the caller handle reconnection logic
 
   return ws;
 }

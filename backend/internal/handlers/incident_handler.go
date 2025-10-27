@@ -34,8 +34,20 @@ func WebSocketHandler(c *gin.Context) {
 	// Register the new client
 	wshub.WSHub.Register <- conn
 
-	// Note: We are not handling reading messages from the client in this implementation,
-	// as the primary flow is server-to-client updates.
+	// Keep the connection alive by reading messages (even if we don't process them)
+	// This blocks until the connection is closed
+	defer func() {
+		wshub.WSHub.Unregister <- conn
+	}()
+
+	for {
+		// Read messages from the client (we don't process them, but we need to read to detect disconnection)
+		_, _, err := conn.ReadMessage()
+		if err != nil {
+			// Connection closed or error occurred
+			break
+		}
+	}
 }
 
 func CreateIncidentHandler(c *gin.Context) {

@@ -1,20 +1,13 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { DragDropContext, DropResult } from 'react-beautiful-dnd';
-import { IncidentBoardState, TrendMetric, Incident, IncidentSeverity } from './types';
+import { IncidentBoardState, Incident, IncidentSeverity } from './types';
 import { IncidentColumn } from './components/IncidentColumn';
-import { TrendCard } from './components/TrendCard';
 import { IncidentModal } from './components/IncidentModal';
 import { FilterBar } from './components/FilterBar';
 import { ResolvedIncidentsPanel } from './components/ResolvedIncidentsPanel';
 import * as api from './services/api';
 import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
 import { useTheme } from './contexts/ThemeContext';
-
-const trendMetrics: TrendMetric[] = [
-  { label: 'Critical incidents', value: '+27%', change: 27, isPositive: true },
-  { label: 'Time spent in incidents', value: '-31%', change: -31, isPositive: false },
-  { label: 'Overnight work (11pm-8am)', value: '+14%', change: 14, isPositive: true },
-];
 
 const emptyBoardState: IncidentBoardState = {
   Triage: {
@@ -188,6 +181,15 @@ function App() {
   const [progressBar, setProgressBar] = useState<{ show: boolean; message: string; progress: number } | null>(null);
   const [isFixingAll, setIsFixingAll] = useState(false);
   const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
+  const [systemsHealth, setSystemsHealth] = useState<{
+    'redis-test': {
+      health: number;
+      memory_used: number;
+      memory_max: number;
+      memory_percent: number;
+      status: string;
+    };
+  } | null>(null);
   
   // Use a ref to avoid WebSocket reconnections when modal changes
   const modalIncidentRef = useRef<Incident | null>(null);
@@ -254,6 +256,37 @@ function App() {
     };
   }, []);
 
+  // Poll systems health every 5 seconds
+  useEffect(() => {
+    async function fetchSystemsHealth() {
+      try {
+        const status = await api.getHealthMonitorStatus();
+        
+        // Log health status updates for debugging
+        if (status.services['redis-test']) {
+          const redis = status.services['redis-test'];
+          console.log(`🏥 Systems health update: Redis ${redis.health}% healthy (${redis.memory_percent.toFixed(1)}% memory)`);
+        }
+        
+        setSystemsHealth(status.services);
+      } catch (error) {
+        console.error('❌ Failed to fetch systems health:', error);
+      }
+    }
+
+    // Fetch immediately
+    console.log('🏥 Starting systems health polling...');
+    fetchSystemsHealth();
+
+    // Then poll every 5 seconds
+    const interval = setInterval(fetchSystemsHealth, 5000);
+
+    return () => {
+      console.log('🏥 Stopping systems health polling');
+      clearInterval(interval);
+    };
+  }, []);
+
   const handleToggleExpand = (id: string) => {
     setExpandedCardId(expandedCardId === id ? null : id);
   };
@@ -285,12 +318,19 @@ function App() {
 
   const handleGenerateIncident = async () => {
     setIsGenerating(true);
+    console.log('🎲 Generating new incident...');
     try {
-      await api.generateRandomIncident();
+      const incident = await api.generateRandomIncident();
+      console.log(`✅ Incident generated successfully:`, {
+        id: incident.id,
+        message: incident.message.substring(0, 50) + '...',
+        source: incident.source,
+        status: incident.status
+      });
       // WebSocket will handle the update automatically
-      console.log('✅ Incident generated successfully');
+      console.log('⏳ Waiting for WebSocket broadcast...');
     } catch (error) {
-      console.error('Failed to generate incident:', error);
+      console.error('❌ Failed to generate incident:', error);
       setError('Failed to generate incident');
       setTimeout(() => setError(null), 3000);
     } finally {
@@ -305,15 +345,23 @@ function App() {
     setModalIncident(null);
     
     try {
-      console.log(`🔄 Resetting system...`);
+      console.log(`🔄 ========== STARTING SYSTEM RESET ==========`);
       
       // Step 1: Clear Redis to restore service health
-      console.log('🧹 Clearing Redis memory...');
+      console.log('🧹 Step 1: Clearing Redis memory...');
       try {
-        await api.clearRedis();
-        console.log('✅ Redis cleared');
+        const redisResult = await api.clearRedis();
+        console.log('✅ Redis cleared successfully:', redisResult);
+        
+        // Immediately fetch updated health status
+        const healthStatus = await api.getHealthMonitorStatus();
+        console.log('📊 Redis health after clear:', {
+          health: healthStatus.services['redis-test'].health,
+          memory_percent: healthStatus.services['redis-test'].memory_percent
+        });
+        setSystemsHealth(healthStatus.services);
       } catch (clearError) {
-        console.error('Failed to clear Redis:', clearError);
+        console.error('❌ Failed to clear Redis:', clearError);
         setError('Failed to restore Redis health');
         setTimeout(() => setError(null), 3000);
         setIsFixingAll(false);
@@ -331,7 +379,7 @@ function App() {
         ...resolvedIncidents.map(inc => inc.id)
       ];
 
-      console.log(`🗑️  Deleting ${allIncidentIds.length} incidents...`);
+      console.log(`🗑️  Step 2: Deleting ${allIncidentIds.length} incidents...`);
 
       // Step 3: Immediately clear UI
       setBoard({
@@ -340,31 +388,34 @@ function App() {
         Fixing: { name: 'Fixing', items: [] },
       });
       setResolvedIncidents([]);
-      console.log('✅ UI cleared');
+      console.log('✅ Step 3: UI cleared (0 incidents displayed)');
 
       // Step 4: Delete incidents from backend (fire-and-forget)
       if (allIncidentIds.length > 0) {
+        console.log(`🔄 Step 4: Sending delete requests for ${allIncidentIds.length} incidents to backend...`);
         const deletePromises = allIncidentIds.map(id =>
           fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/v1/incidents/${id}`, {
             method: 'DELETE',
           }).catch(err => {
-            console.error(`Failed to delete incident ${id}:`, err);
+            console.error(`❌ Failed to delete incident ${id}:`, err);
             return null;
           })
         );
 
         // Don't wait for all deletes, just fire them off
         Promise.all(deletePromises).then(() => {
-          console.log(`✅ Deleted ${allIncidentIds.length} incidents from backend`);
+          console.log(`✅ Successfully deleted ${allIncidentIds.length} incidents from backend`);
         }).catch(err => {
-          console.error('Some incidents failed to delete:', err);
+          console.error('❌ Some incidents failed to delete:', err);
         });
+      } else {
+        console.log('ℹ️  No incidents to delete');
       }
 
-      console.log('✅ System reset complete');
+      console.log('✅ ========== SYSTEM RESET COMPLETE ==========');
 
     } catch (error) {
-      console.error('Unexpected error in Reset:', error);
+      console.error('❌ Unexpected error in Reset:', error);
       setError('Failed to reset system');
       setTimeout(() => setError(null), 3000);
     } finally {
@@ -751,89 +802,137 @@ function App() {
     loadIncidents();
   }, []);
 
-  // Set up WebSocket connection for real-time updates
+  // Set up WebSocket connection for real-time updates with auto-reconnection
   useEffect(() => {
-    const ws = api.connectWebSocket((data) => {
-      console.log('📨 WebSocket message received:', data);
-      
-      const incident = mapBackendIncidentToFrontend(data);
-      const status = mapBackendStatusToFrontend(data.status);
-      
-      console.log(`✨ Processing incident ${incident.incidentNumber} -> ${status}`);
-      
-      // Check if this is a redis-test incident (complete progress bar)
-      console.log('🔍 Checking incident source:', {
-        source: data.source,
-        waitingFlag: waitingForRedisIncident.current,
-        willComplete: data.source === 'redis-test' && waitingForRedisIncident.current
-      });
-      
-      if (data.source === 'redis-test' && waitingForRedisIncident.current) {
-        console.log('🎯 Redis incident detected - completing progress bar');
-        setProgressBar({ show: true, message: 'Incident created!', progress: 100 });
-        waitingForRedisIncident.current = false;
-        if (progressIntervalRef.current) {
-          window.clearInterval(progressIntervalRef.current);
-          progressIntervalRef.current = null;
-        }
-        // Hide progress bar after 1.5 seconds
-        setTimeout(() => {
-          setProgressBar(null);
-        }, 1500);
-      }
-      
-      // Update modal if it's open for this incident (use ref to avoid reconnection)
-      if (modalIncidentRef.current?.id === incident.id) {
-        setModalIncident(incident);
-        console.log('🔄 Updated modal incident');
-      }
-      
-      // Update the board with new/updated incident
-      setBoard((prevBoard) => {
-        const newBoard: IncidentBoardState = {
-          Triage: { ...prevBoard.Triage, items: [...prevBoard.Triage.items] },
-          Investigating: { ...prevBoard.Investigating, items: [...prevBoard.Investigating.items] },
-          Fixing: { ...prevBoard.Fixing, items: [...prevBoard.Fixing.items] },
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: number | null = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 10;
+    const baseReconnectDelay = 1000; // Start with 1 second
+    
+    const connect = () => {
+      console.log('🔌 Attempting to connect WebSocket...');
+      try {
+        ws = api.connectWebSocket((data) => {
+          console.log('📨 WebSocket message received:', data);
+          
+          // Reset reconnect attempts on successful message
+          reconnectAttempts = 0;
+          
+          const incident = mapBackendIncidentToFrontend(data);
+          const status = mapBackendStatusToFrontend(data.status);
+          
+          console.log(`✨ Processing incident ${incident.incidentNumber} -> ${status}`);
+          
+          // Check if this is a redis-test incident (complete progress bar)
+          console.log('🔍 Checking incident source:', {
+            source: data.source,
+            waitingFlag: waitingForRedisIncident.current,
+            willComplete: data.source === 'redis-test' && waitingForRedisIncident.current
+          });
+          
+          if (data.source === 'redis-test' && waitingForRedisIncident.current) {
+            console.log('🎯 Redis incident detected - completing progress bar');
+            setProgressBar({ show: true, message: 'Incident created!', progress: 100 });
+            waitingForRedisIncident.current = false;
+            if (progressIntervalRef.current) {
+              window.clearInterval(progressIntervalRef.current);
+              progressIntervalRef.current = null;
+            }
+            // Hide progress bar after 1.5 seconds
+            setTimeout(() => {
+              setProgressBar(null);
+            }, 1500);
+          }
+          
+          // Update modal if it's open for this incident (use ref to avoid reconnection)
+          if (modalIncidentRef.current?.id === incident.id) {
+            setModalIncident(incident);
+            console.log('🔄 Updated modal incident');
+          }
+          
+          // Update the board with new/updated incident
+          setBoard((prevBoard) => {
+            const newBoard: IncidentBoardState = {
+              Triage: { ...prevBoard.Triage, items: [...prevBoard.Triage.items] },
+              Investigating: { ...prevBoard.Investigating, items: [...prevBoard.Investigating.items] },
+              Fixing: { ...prevBoard.Fixing, items: [...prevBoard.Fixing.items] },
+            };
+            
+            // First, find if incident exists anywhere in the board
+            let existingColumnKey: keyof IncidentBoardState | null = null;
+            let existingIndex = -1;
+            
+            for (const columnKey of Object.keys(newBoard) as Array<keyof IncidentBoardState>) {
+              const index = newBoard[columnKey].items.findIndex(i => i.id === incident.id);
+              if (index >= 0) {
+                existingColumnKey = columnKey;
+                existingIndex = index;
+                break;
+              }
+            }
+            
+            if (existingColumnKey !== null) {
+              // Incident exists in the board
+              if (existingColumnKey === status) {
+                // Same column - update in place (preserve position)
+                newBoard[status].items[existingIndex] = incident;
+                console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
+              } else {
+                // Different column - remove from old, add to new
+                newBoard[existingColumnKey].items.splice(existingIndex, 1);
+                newBoard[status].items.push(incident);
+                console.log(`📦 Moved incident ${incident.incidentNumber} from ${existingColumnKey} to ${status} column`);
+              }
+            } else {
+              // New incident - add to target column
+              newBoard[status].items.push(incident);
+              console.log(`✅ Added new incident ${incident.incidentNumber} to ${status} column`);
+            }
+            
+            return newBoard;
+          });
+        });
+        
+        console.log('✅ WebSocket instance created, setting onclose handler...');
+        
+        // Handle WebSocket close event for automatic reconnection
+        ws.onclose = () => {
+          console.log('❌ WebSocket disconnected');
+          console.log(`📊 Reconnection state: attempts=${reconnectAttempts}/${maxReconnectAttempts}`);
+          
+          // Attempt to reconnect with exponential backoff
+          if (reconnectAttempts < maxReconnectAttempts) {
+            const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), 30000); // Max 30 seconds
+            reconnectAttempts++;
+            console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})...`);
+            
+            reconnectTimeout = window.setTimeout(() => {
+              connect();
+            }, delay);
+          } else {
+            console.error('❌ Max reconnection attempts reached. Please refresh the page.');
+            setError('Lost connection to server. Please refresh the page.');
+          }
         };
         
-        // First, find if incident exists anywhere in the board
-        let existingColumnKey: keyof IncidentBoardState | null = null;
-        let existingIndex = -1;
-        
-        for (const columnKey of Object.keys(newBoard) as Array<keyof IncidentBoardState>) {
-          const index = newBoard[columnKey].items.findIndex(i => i.id === incident.id);
-          if (index >= 0) {
-            existingColumnKey = columnKey;
-            existingIndex = index;
-            break;
-          }
-        }
-        
-        if (existingColumnKey !== null) {
-          // Incident exists in the board
-          if (existingColumnKey === status) {
-            // Same column - update in place (preserve position)
-            newBoard[status].items[existingIndex] = incident;
-            console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
-          } else {
-            // Different column - remove from old, add to new
-            newBoard[existingColumnKey].items.splice(existingIndex, 1);
-            newBoard[status].items.push(incident);
-            console.log(`📦 Moved incident ${incident.incidentNumber} from ${existingColumnKey} to ${status} column`);
-          }
-        } else {
-          // New incident - add to target column
-          newBoard[status].items.push(incident);
-          console.log(`✅ Added new incident ${incident.incidentNumber} to ${status} column`);
-        }
-        
-        return newBoard;
-      });
-    });
+      } catch (error) {
+        console.error('❌ Failed to create WebSocket connection:', error);
+      }
+    };
+    
+    // Initial connection
+    connect();
 
     return () => {
-      console.log('🔌 Closing WebSocket connection');
-      ws.close();
+      console.log('🔌 Cleaning up WebSocket connection');
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (ws) {
+        ws.onclose = null; // Prevent reconnection on intentional close
+        ws.close();
+      }
     };
   }, []); // Empty dependencies - WebSocket stays connected for the app lifetime
 
@@ -1231,19 +1330,157 @@ function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 pt-6 pb-16">
-        {/* Trends Section */}
+        {/* Systems Health Dashboard */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-semibold text-primary">Trends</h2>
-              <p className="text-sm text-secondary">vs last 4 weeks</p>
+              <h2 className="text-2xl font-semibold text-primary">Systems Health</h2>
+              <p className="text-sm text-secondary">Real-time status of monitored services</p>
             </div>
-            <button className="text-sm text-secondary hover:text-primary transition-colors">View all</button>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            {trendMetrics.map((metric, index) => (
-              <TrendCard key={index} metric={metric} />
-            ))}
+          
+          {/* Horizontally scrollable cards container */}
+          <div 
+            className="flex gap-4 overflow-x-auto pb-4"
+            style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: 'rgb(var(--border-color)) transparent'
+            }}
+          >
+            {/* Redis Test Service Card */}
+            {systemsHealth && systemsHealth['redis-test'] && (
+              <div 
+                className="rounded-lg p-5 border shrink-0"
+                style={{
+                  backgroundColor: `rgb(var(--card-bg))`,
+                  borderColor: `rgb(var(--border-color))`,
+                  width: '400px', // Fixed width for rectangular layout
+                  minWidth: '400px',
+                }}
+              >
+                {/* Header with icon, name, and health score */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    {/* Service Icon */}
+                    <div 
+                      className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                      style={{
+                        backgroundColor: systemsHealth['redis-test'].health >= 70 
+                          ? 'rgba(34, 197, 94, 0.1)' 
+                          : 'rgba(239, 68, 68, 0.1)',
+                      }}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{
+                        color: systemsHealth['redis-test'].health >= 70 
+                          ? 'rgb(34, 197, 94)' 
+                          : 'rgb(239, 68, 68)'
+                      }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                      </svg>
+                    </div>
+
+                    {/* Service Info */}
+                    <div>
+                      <h3 className="text-base font-semibold text-primary">Redis Test</h3>
+                      <p className="text-xs text-secondary">In-memory cache</p>
+                    </div>
+                  </div>
+
+                  {/* Health Score Badge */}
+                  <div className="text-right">
+                    <div className="text-2xl font-bold" style={{
+                      color: systemsHealth['redis-test'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)'
+                    }}>
+                      {systemsHealth['redis-test'].health}%
+                    </div>
+                    <div className="text-xs text-secondary">Health</div>
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className="mb-4">
+                  <div 
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
+                    style={{
+                      backgroundColor: systemsHealth['redis-test'].health >= 70 
+                        ? 'rgba(34, 197, 94, 0.1)' 
+                        : 'rgba(239, 68, 68, 0.1)',
+                      color: systemsHealth['redis-test'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)',
+                      border: `1px solid ${systemsHealth['redis-test'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)'}`,
+                    }}
+                  >
+                    <div 
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{
+                        backgroundColor: systemsHealth['redis-test'].health >= 70 
+                          ? 'rgb(34, 197, 94)' 
+                          : 'rgb(239, 68, 68)'
+                      }}
+                    />
+                    {systemsHealth['redis-test'].health >= 70 ? 'Operational' : 'Degraded'}
+                  </div>
+                </div>
+
+                {/* Metrics in a compact 2x2 grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Memory Usage</div>
+                    <div className="text-base font-semibold text-primary">
+                      {(systemsHealth['redis-test'].memory_used / 1024 / 1024).toFixed(1)} MB
+                    </div>
+                    <div className="text-xs text-tertiary">
+                      of {(systemsHealth['redis-test'].memory_max / 1024 / 1024).toFixed(0)} MB
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Memory Utilization</div>
+                    <div className="text-base font-semibold text-primary mb-1">
+                      {systemsHealth['redis-test'].memory_percent.toFixed(1)}%
+                    </div>
+                    {/* Compact Memory Progress Bar */}
+                    <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                      <div 
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${Math.min(systemsHealth['redis-test'].memory_percent, 100)}%`,
+                          backgroundColor: systemsHealth['redis-test'].memory_percent > 90 
+                            ? 'rgb(239, 68, 68)' 
+                            : systemsHealth['redis-test'].memory_percent > 70 
+                            ? 'rgb(249, 115, 22)' 
+                            : 'rgb(34, 197, 94)'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Loading State */}
+            {!systemsHealth && (
+              <div 
+                className="rounded-lg p-6 border flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: `rgb(var(--card-bg))`,
+                  borderColor: `rgb(var(--border-color))`,
+                  width: '400px',
+                  minWidth: '400px',
+                }}
+              >
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-2" style={{ borderColor: 'rgb(249, 115, 22)' }}></div>
+                  <p className="text-sm text-secondary">Loading systems health...</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Future system cards will be added here horizontally */}
           </div>
         </section>
 
@@ -1294,8 +1531,8 @@ function App() {
             onClearFilters={handleClearFilters}
           />
           
-          <DragDropContext onDragEnd={onDragEnd}>
-            <div className="grid grid-cols-3 gap-4">
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div className="grid grid-cols-3 gap-4">
               {Object.entries(filteredBoard).map(([columnId, column]) => (
                 <IncidentColumn 
                   key={columnId} 

@@ -240,16 +240,33 @@ func BroadcastIncidentUpdate(id uuid.UUID) {
 
 // RunFullAnalysisPipeline performs the complete AI analysis and broadcasts updates.
 func RunFullAnalysisPipeline(incident models.Incident) {
+	// Add defer to catch any panics
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("❌ PANIC in RunFullAnalysisPipeline for incident %s: %v", incident.ID.String()[:8], r)
+		}
+	}()
+
+	log.Printf("🚀 RunFullAnalysisPipeline started for incident %s (source: %s)", incident.ID.String()[:8], incident.Source)
+
 	// Step 1: Immediately broadcast the newly created incident
-	detailsNew := FullIncidentDetails{Incident: incident}
+	// Refetch to ensure we have StatusHistory loaded
+	incidentWithHistory, err := GetIncidentByID(incident.ID)
+	if err != nil {
+		log.Printf("❌ Failed to fetch incident %s for initial broadcast: %v", incident.ID.String()[:8], err)
+		// Fallback to incident without history
+		incidentWithHistory = incident
+	}
+
+	detailsNew := FullIncidentDetails{Incident: incidentWithHistory}
 	wshub.WSHub.Broadcast <- detailsNew
 	log.Printf("📡 Broadcasted new incident %s (no analysis yet)", incident.ID.String()[:8])
 
 	// Step 2: Trigger Diagnosis
 	log.Printf("🔬 Starting analysis pipeline for incident %s", incident.ID.String()[:8])
-	_, err := TriggerAIDiagnosis(incident.ID)
-	if err != nil {
-		log.Printf("❌ Error in AI diagnosis for incident %s: %v", incident.ID.String()[:8], err)
+	_, diagErr := TriggerAIDiagnosis(incident.ID)
+	if diagErr != nil {
+		log.Printf("❌ Error in AI diagnosis for incident %s: %v", incident.ID.String()[:8], diagErr)
 		return // End the pipeline if diagnosis fails
 	}
 
@@ -290,16 +307,22 @@ func TriggerAIDiagnosis(incidentID uuid.UUID) (models.IncidentAnalysis, error) {
 	var incident models.Incident
 	var analysis models.IncidentAnalysis
 
+	log.Printf("🔍 TriggerAIDiagnosis: Starting for incident %s", incidentID.String()[:8])
+
 	// 1. Find the incident to be analyzed.
 	if err := db.DB.First(&incident, incidentID).Error; err != nil {
+		log.Printf("❌ TriggerAIDiagnosis: Incident %s not found: %v", incidentID.String()[:8], err)
 		return analysis, fmt.Errorf("incident not found: %w", err)
 	}
 
+	log.Printf("🤖 TriggerAIDiagnosis: Calling AI service for incident %s", incidentID.String()[:8])
 	// 2. Call the AI service to get a diagnosis.
 	body, err := callAIService(incident.Message, "/api/v1/diagnosis")
 	if err != nil {
+		log.Printf("❌ TriggerAIDiagnosis: AI service call failed for incident %s: %v", incidentID.String()[:8], err)
 		return analysis, err
 	}
+	log.Printf("✅ TriggerAIDiagnosis: Got response from AI service for incident %s", incidentID.String()[:8])
 	var diagResp aiDiagnosisResponse
 	if err := json.Unmarshal(body, &diagResp); err != nil {
 		return analysis, fmt.Errorf("failed to decode diagnosis response: %w", err)
