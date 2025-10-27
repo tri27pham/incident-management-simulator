@@ -1,6 +1,6 @@
 # Incident Management Simulator
 
-A full-stack application that simulates incident management with AI-powered diagnosis and suggested fixes.
+A full-stack application that simulates incident management with **AI-powered diagnosis**, **suggested solutions**, and **automated AI agent remediation** of real system incidents.
 
 ## 🚀 Quick Start
 
@@ -9,8 +9,26 @@ A full-stack application that simulates incident management with AI-powered diag
 - Go 1.21+
 - Node.js 18+
 - Python 3.9+
+- AI API Key (Groq or Gemini - see [Groq Setup](docs/GROQ_SETUP.md))
 
-### Start Everything
+### Start Everything (Docker Compose - Recommended)
+```bash
+./scripts/start-docker.sh
+```
+
+This will:
+1. Build and start all services in Docker containers
+2. Run database migrations automatically
+3. Start health monitoring for Redis
+4. Make services available at:
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8080
+   - AI Diagnosis: http://localhost:8001
+   - Health Monitor: http://localhost:8002
+
+**Simpler and more reliable than running services individually!**
+
+### Start Everything (Local Development)
 ```bash
 ./scripts/start.sh
 ```
@@ -61,11 +79,22 @@ This will:
 
 ## 📊 Services
 
+### Docker Compose (Recommended)
 | Service | URL | Purpose |
 |---------|-----|---------|
-| Frontend | http://localhost:5173 | React UI for incident board |
+| Frontend | http://localhost:3000 | React UI with incident board & AI agent controls |
+| Backend API | http://localhost:8080 | Go API server with AI agent orchestration |
+| AI Diagnosis | http://localhost:8001 | FastAPI AI service (Groq/Gemini) |
+| Health Monitor | http://localhost:8002 | System health monitoring & incident creation |
+| PostgreSQL | localhost:5432 | Database with agent execution tracking |
+| Redis (Test) | localhost:6379 | Test system for AI agent remediation |
+
+### Local Development
+| Service | URL | Purpose |
+|---------|-----|---------|
+| Frontend | http://localhost:5173 | React UI (Vite dev server) |
 | Backend API | http://localhost:8080 | Go API server |
-| AI Diagnosis | http://localhost:8000 | FastAPI AI service (Groq/Gemini) |
+| AI Diagnosis | http://localhost:8000 | FastAPI AI service |
 | Incident Generator | http://localhost:9000 | Automated incident generation |
 | PostgreSQL | localhost:5432 | Database |
 
@@ -77,13 +106,18 @@ This will:
 ```bash
 ./scripts/clear-db.sh
 ```
-Deletes all incidents but keeps schema intact.
+Deletes all incidents and agent executions but keeps schema intact.
 
 ### Reset Database (Nuclear)
 ```bash
 ./scripts/reset-db.sh
 ```
-Completely destroys and recreates the database.
+Truncates all tables (incidents, agent executions, analysis, status history) and broadcasts reset to all connected frontends. This is the recommended way to fully reset the system.
+
+**Frontend Reset Button:** You can also use the "Reset" button in the UI which:
+1. Clears Redis memory
+2. Truncates all database tables
+3. Clears the UI immediately
 
 ---
 
@@ -249,19 +283,36 @@ VITE_GENERATOR_URL=http://localhost:9000
 
 ## 🎯 Features
 
+### Core Features
 - ✅ **Real-time incident board** with drag-and-drop workflow (Triage → Investigating → Fixing → Resolved)
 - ✅ **AI-powered diagnosis** using Groq/Gemini with automatic fallback
 - ✅ **AI-suggested solutions** with confidence scoring
-- ✅ **Automated incident generation** via AI
 - ✅ **WebSocket live updates** across all clients
 - ✅ **Light/Dark theme** with smooth transitions
 - ✅ **Status history tracking** with timeline visualization
-- ✅ **Resolved incidents panel** with full incident history
+- ✅ **Resolved incidents panel** with full incident history and agent execution details
 - ✅ **Persistent notes** with manual save
 - ✅ **Severity-based filtering** (Critical, High, Medium, Low, Minor)
 - ✅ **Team-based filtering** (Backend, Frontend, Infrastructure, Database, Security)
-- ✅ **Two-stage card expansion** with smooth auto-scroll
-- ✅ **Full incident details modal** with diagnosis, solution, and timeline
+
+### 🤖 AI Agent Remediation (NEW)
+- ✅ **Incident Classification**: Real vs Synthetic incidents with actionability flags
+- ✅ **Multi-phase workflow**: Analysis → Preview → Approval → Execution → Verification → Completion
+- ✅ **User approval required**: Human oversight before any automated action
+- ✅ **Safety controls**: Only acts on whitelisted systems with proper classification
+- ✅ **Real-time visualization**: See agent progress with live updates
+- ✅ **Execution logging**: Full audit trail of all commands and outputs
+- ✅ **Health verification**: Confirms remediation actually fixed the issue
+- ✅ **Auto-resolution**: Incidents automatically marked as resolved on success
+- ✅ **Risk assessment**: Shows potential risks before execution
+- ✅ **Rollback tracking**: Prepared for future rollback capability
+- ✅ **Agent history**: View all past agent actions for each incident
+
+### System Monitoring & Testing
+- ✅ **Health monitoring**: Redis memory monitoring with automatic incident creation
+- ✅ **Automated incident generation** via AI
+- ✅ **Trigger failures**: UI buttons to simulate Redis overload
+- ✅ **System health dashboard**: Real-time Redis metrics in UI
 
 ---
 
@@ -323,7 +374,36 @@ MIT
 
 ## 📚 Documentation
 
+- **[AI Agent System](./AI_AGENT_README.md)** - Complete AI agent remediation documentation
 - [Quick Reference](docs/QUICK_REFERENCE.md) - Command cheatsheet
 - [Groq Setup](docs/GROQ_SETUP.md) - Configure Groq AI
 - [Migrations](docs/MIGRATIONS.md) - Database migration guide
 - [AI Fallback Changes](docs/AI_FALLBACK_CHANGES.md) - AI provider fallback system
+
+## 🚦 Quick Test: Try the AI Agent
+
+1. **Start the system:**
+   ```bash
+   ./scripts/start-docker.sh
+   ```
+
+2. **Trigger a Redis incident:**
+   - Click the "Trigger Failure" → "Overload Redis Memory" button in the UI
+   - Or run: `./scripts/break-redis-fast.sh`
+
+3. **Watch the AI agent work:**
+   - Find the incident with the 🤖 "Agent Ready" badge
+   - Click to open the incident modal
+   - Scroll to "AI Agent Remediation"
+   - Click "Start AI Agent Remediation"
+   - Watch as the AI:
+     - Analyzes the incident (10-15 seconds)
+     - Generates a remediation plan
+     - Waits for your approval
+     - Executes the fix
+     - Verifies it worked
+     - Auto-resolves the incident
+
+4. **View results:**
+   - Check "View Resolved" to see the completed incident
+   - All agent actions are logged and visible

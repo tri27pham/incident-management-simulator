@@ -11,10 +11,10 @@ The AI Agent Remediation System is a fully automated incident response system th
 1. **Multi-Phase Workflow**
    - 🧠 **Thinking Phase**: AI analyzes incident and recommends action
    - 📋 **Command Preview**: Generates specific remediation commands
-   - ⏳ **Approval Phase**: (Currently auto-approved, ready for manual approval)
-   - ⚡ **Execution Phase**: Runs commands with logging
+   - ⏳ **Approval Phase**: User must approve or reject before execution
+   - ⚡ **Execution Phase**: Runs approved commands with logging
    - 🔍 **Verification Phase**: Checks if remediation worked
-   - ✅ **Completion**: Reports success/failure with full audit trail
+   - ✅ **Completion**: Reports success/failure and auto-resolves incident
 
 2. **Safety Controls**
    - Only acts on incidents marked as `actionable: true`
@@ -356,22 +356,23 @@ The agent will complete but mark `success: false` if verification fails. This is
 
 ## Future Enhancements
 
-### Phase 1 (Immediate)
-- [ ] Manual approval step (remove auto-approval)
-- [ ] Rollback capability on failure
+### Phase 1 (Near-term)
+- [ ] Rollback capability on failure (infrastructure ready)
 - [ ] Dry-run mode testing
-
-### Phase 2 (Near-term)
 - [ ] More sophisticated Redis actions (scale, failover)
 - [ ] PostgreSQL remediation actions
+
+### Phase 2 (Medium-term)
 - [ ] Kafka remediation actions
 - [ ] Agent confidence scoring
-
-### Phase 3 (Long-term)
 - [ ] Multi-step remediation plans
 - [ ] Learning from past remediations
+
+### Phase 3 (Long-term)
 - [ ] Integration with runbooks
 - [ ] Notification system (Slack, PagerDuty)
+- [ ] Anomaly detection and proactive remediation
+- [ ] Custom remediation scripts per system
 
 ## Security Considerations
 
