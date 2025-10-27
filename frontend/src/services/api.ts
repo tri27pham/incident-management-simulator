@@ -204,6 +204,26 @@ export async function triggerRedisMemoryFailure(): Promise<{ status: string; mes
   return response.json();
 }
 
+export async function clearPostgres(): Promise<{ status: string; message: string }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/clear/postgres`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to clear PostgreSQL connections');
+  }
+  return response.json();
+}
+
+export async function triggerPostgresConnectionFailure(): Promise<{ status: string; message: string; health: number }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/trigger/postgres-connections`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to trigger PostgreSQL connection failure');
+  }
+  return response.json();
+}
+
 export async function getHealthMonitorStatus(): Promise<{
   services: {
     'redis-test': {
@@ -211,6 +231,16 @@ export async function getHealthMonitorStatus(): Promise<{
       memory_used: number;
       memory_max: number;
       memory_percent: number;
+      status: string;
+      will_trigger_incident: boolean;
+    };
+    'postgres-test': {
+      health: number;
+      idle_connections: number;
+      active_connections: number;
+      total_connections: number;
+      max_connections: number;
+      idle_ratio: number;
       status: string;
       will_trigger_incident: boolean;
     };

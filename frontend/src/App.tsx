@@ -181,12 +181,22 @@ function App() {
   const [progressBar, setProgressBar] = useState<{ show: boolean; message: string; progress: number } | null>(null);
   const [isFixingAll, setIsFixingAll] = useState(false);
   const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
+  const [postgresIdleConnections, setPostgresIdleConnections] = useState<number | null>(null);
   const [systemsHealth, setSystemsHealth] = useState<{
     'redis-test': {
       health: number;
       memory_used: number;
       memory_max: number;
       memory_percent: number;
+      status: string;
+    };
+    'postgres-test'?: {
+      health: number;
+      idle_connections: number;
+      active_connections: number;
+      total_connections: number;
+      max_connections: number;
+      idle_ratio: number;
       status: string;
     };
   } | null>(null);
@@ -226,19 +236,26 @@ function App() {
     }
 
     if (showFailureDropdown) {
-      // Fetch Redis status when dropdown opens
-      async function fetchRedisStatus() {
+      // Fetch system status when dropdown opens
+      async function fetchSystemStatus() {
         try {
           const status = await api.getHealthMonitorStatus();
           const memoryPercent = status.services['redis-test'].memory_percent;
           setRedisMemoryPercent(memoryPercent);
           console.log(`📊 Redis memory: ${memoryPercent}%`);
+          
+          if (status.services['postgres-test']) {
+            const idleConns = status.services['postgres-test'].idle_connections;
+            setPostgresIdleConnections(idleConns);
+            console.log(`📊 PostgreSQL idle connections: ${idleConns}`);
+          }
         } catch (error) {
-          console.error('Failed to fetch Redis status:', error);
+          console.error('Failed to fetch system status:', error);
           setRedisMemoryPercent(null);
+          setPostgresIdleConnections(null);
         }
       }
-      fetchRedisStatus();
+      fetchSystemStatus();
       
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
@@ -352,17 +369,30 @@ function App() {
       try {
         const redisResult = await api.clearRedis();
         console.log('✅ Redis cleared successfully:', redisResult);
-        
-        // Immediately fetch updated health status
-        const healthStatus = await api.getHealthMonitorStatus();
-        console.log('📊 Redis health after clear:', {
-          health: healthStatus.services['redis-test'].health,
-          memory_percent: healthStatus.services['redis-test'].memory_percent
-        });
-        setSystemsHealth(healthStatus.services);
       } catch (clearError) {
         console.error('❌ Failed to clear Redis:', clearError);
         setError('Failed to restore Redis health');
+        setTimeout(() => setError(null), 3000);
+        setIsFixingAll(false);
+        return;
+      }
+
+      // Step 1.5: Clear PostgreSQL connections to restore service health
+      console.log('🧹 Step 1.5: Clearing PostgreSQL connections...');
+      try {
+        const postgresResult = await api.clearPostgres();
+        console.log('✅ PostgreSQL cleared successfully:', postgresResult);
+        
+        // Fetch updated health status for both services
+        const healthStatus = await api.getHealthMonitorStatus();
+        console.log('📊 Systems health after clear:', {
+          redis: healthStatus.services['redis-test'].health,
+          postgres: healthStatus.services['postgres-test']?.health
+        });
+        setSystemsHealth(healthStatus.services);
+      } catch (clearError) {
+        console.error('❌ Failed to clear PostgreSQL:', clearError);
+        setError('Failed to restore PostgreSQL health');
         setTimeout(() => setError(null), 3000);
         setIsFixingAll(false);
         return;
@@ -545,6 +575,71 @@ function App() {
       if (progressIntervalRef.current) {
         window.clearInterval(progressIntervalRef.current);
       }
+    } finally {
+      setIsTriggeringFailure(false);
+    }
+  };
+
+  const handleTriggerPostgresConnections = async () => {
+    setIsTriggeringFailure(true);
+    setShowFailureDropdown(false);
+    
+    try {
+      console.log('🔥 Triggering PostgreSQL connection exhaustion...');
+      setProgressBar({ 
+        show: true, 
+        message: 'Creating idle PostgreSQL connections...', 
+        progress: 30 
+      });
+      
+      const result = await api.triggerPostgresConnectionFailure();
+      console.log('✅ PostgreSQL connections created:', result);
+      
+      setProgressBar({ 
+        show: true, 
+        message: 'Waiting for incident detection...', 
+        progress: 70 
+      });
+      
+      // Wait for incident to be created (5 seconds per health monitor)
+      await new Promise(resolve => setTimeout(resolve, 6000));
+      
+      setProgressBar({ 
+        show: true, 
+        message: 'Incident detected!', 
+        progress: 100 
+      });
+      
+      // Reload board
+      const [backendIncidents, backendResolvedIncidents] = await Promise.all([
+        api.fetchIncidents(),
+        api.fetchResolvedIncidents(),
+      ]);
+      
+      const newBoard: IncidentBoardState = {
+        Triage: { name: 'Triage', items: [] },
+        Investigating: { name: 'Investigating', items: [] },
+        Fixing: { name: 'Fixing', items: [] },
+      };
+
+      backendIncidents.forEach((backendIncident) => {
+        const incident = mapBackendIncidentToFrontend(backendIncident);
+        const status = mapBackendStatusToFrontend(backendIncident.status);
+        newBoard[status].items.push(incident);
+      });
+
+      const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
+      setBoard(newBoard);
+      setResolvedIncidents(resolved);
+      
+      // Clear progress bar after 2 seconds
+      setTimeout(() => setProgressBar(null), 2000);
+      
+    } catch (error) {
+      console.error('Failed to trigger PostgreSQL failure:', error);
+      setError('Failed to trigger PostgreSQL failure');
+      setTimeout(() => setError(null), 3000);
+      setProgressBar(null);
     } finally {
       setIsTriggeringFailure(false);
     }
@@ -1243,6 +1338,43 @@ function App() {
                       </div>
                     </div>
                   </button>
+                  
+                  <button
+                    onClick={handleTriggerPostgresConnections}
+                    disabled={postgresIdleConnections !== null && postgresIdleConnections > 10}
+                    className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
+                    style={{
+                      color: `rgb(var(--text-primary))`,
+                      backgroundColor: `rgb(var(--bg-secondary))`,
+                      borderColor: `rgb(var(--border-color))`,
+                      opacity: (postgresIdleConnections !== null && postgresIdleConnections > 10) ? 0.5 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (postgresIdleConnections === null || postgresIdleConnections <= 10) {
+                        e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
+                        e.currentTarget.style.transform = 'scale(1.02)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (postgresIdleConnections === null || postgresIdleConnections <= 10) {
+                        e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(147, 51, 234)' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                    </svg>
+                    <div className="flex-1">
+                      <div className="font-medium">Exhaust PostgreSQL Connections</div>
+                      <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
+                        {postgresIdleConnections !== null && postgresIdleConnections > 10 
+                          ? `Already exhausted (${postgresIdleConnections} idle)`
+                          : 'Create 12 idle connections'
+                        }
+                      </div>
+                    </div>
+                  </button>
                 </div>
               )}
             </div>
@@ -1489,6 +1621,110 @@ function App() {
                             : 'rgb(34, 197, 94)'
                         }}
                       />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PostgreSQL Test Service Card */}
+            {systemsHealth && systemsHealth['postgres-test'] && (
+              <div 
+                className="rounded-lg p-5 border shrink-0"
+                style={{
+                  backgroundColor: `rgb(var(--card-bg))`,
+                  borderColor: `rgb(var(--border-color))`,
+                  width: '400px',
+                  minWidth: '400px',
+                }}
+              >
+                {/* Header with icon, name, and health score */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    {/* Service Icon */}
+                    <div 
+                      className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                      style={{
+                        backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                          ? 'rgba(34, 197, 94, 0.1)' 
+                          : 'rgba(239, 68, 68, 0.1)',
+                      }}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{
+                        color: systemsHealth['postgres-test'].health >= 70 
+                          ? 'rgb(34, 197, 94)' 
+                          : 'rgb(239, 68, 68)'
+                      }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                      </svg>
+                    </div>
+
+                    {/* Service Info */}
+                    <div>
+                      <h3 className="text-base font-semibold text-primary">PostgreSQL Test</h3>
+                      <p className="text-xs text-secondary">Relational database</p>
+                    </div>
+                  </div>
+
+                  {/* Health Score Badge */}
+                  <div className="text-right">
+                    <div className="text-2xl font-bold" style={{
+                      color: systemsHealth['postgres-test'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)'
+                    }}>
+                      {systemsHealth['postgres-test'].health}%
+                    </div>
+                    <div className="text-xs text-secondary">Health</div>
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className="mb-4">
+                  <div 
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
+                    style={{
+                      backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                        ? 'rgba(34, 197, 94, 0.1)' 
+                        : 'rgba(239, 68, 68, 0.1)',
+                      color: systemsHealth['postgres-test'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)',
+                      border: `1px solid ${systemsHealth['postgres-test'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)'}`,
+                    }}
+                  >
+                    <div 
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{
+                        backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                          ? 'rgb(34, 197, 94)' 
+                          : 'rgb(239, 68, 68)'
+                      }}
+                    />
+                    {systemsHealth['postgres-test'].health >= 70 ? 'Operational' : 'Degraded'}
+                  </div>
+                </div>
+
+                {/* Metrics in a compact 2x2 grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Idle Connections</div>
+                    <div className="text-base font-semibold text-primary">
+                      {systemsHealth['postgres-test'].idle_connections}
+                    </div>
+                    <div className="text-xs text-tertiary">
+                      {systemsHealth['postgres-test'].idle_ratio.toFixed(1)}% of total
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Connection Pool</div>
+                    <div className="text-base font-semibold text-primary">
+                      {systemsHealth['postgres-test'].total_connections}/{systemsHealth['postgres-test'].max_connections}
+                    </div>
+                    <div className="text-xs text-tertiary">
+                      {systemsHealth['postgres-test'].active_connections} active
                     </div>
                   </div>
                 </div>
