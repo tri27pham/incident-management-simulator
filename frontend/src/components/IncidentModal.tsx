@@ -185,20 +185,57 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
     >
       <div 
         className="rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden"
-        style={{ backgroundColor: `rgb(var(--bg-secondary))` }}
+        style={{ backgroundColor: `rgb(var(--card-bg))` }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-6 py-4 flex items-start justify-between" style={{ 
-          backgroundColor: `rgb(var(--bg-tertiary))`,
+          backgroundColor: `rgb(var(--bg-secondary))`,
           borderBottom: `1px solid rgb(var(--border-color))`
         }}>
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
               <span className="text-sm font-medium text-secondary">{incident.incidentNumber}</span>
               {severity && (
                 <span className={`px-2 py-1 rounded text-xs font-medium ${severity.color}`}>
                   {severity.label}
+                </span>
+              )}
+              {/* Agent classification badges - full labels */}
+              {incident.actionable && incident.incidentType === 'real_system' && (
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ backgroundColor: 'rgb(34, 197, 94)', color: 'white' }}
+                >
+                  <span>🤖</span>
+                  <span>Agent Ready</span>
+                </span>
+              )}
+              {incident.incidentType === 'synthetic' && (
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ backgroundColor: 'rgb(168, 85, 247)', color: 'white' }}
+                >
+                  <span>📝</span>
+                  <span>Synthetic</span>
+                </span>
+              )}
+              {incident.incidentType === 'training' && (
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ backgroundColor: 'rgb(59, 130, 246)', color: 'white' }}
+                >
+                  <span>🎓</span>
+                  <span>Training</span>
+                </span>
+              )}
+              {incident.remediationMode === 'manual' && (
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ backgroundColor: 'rgb(234, 88, 12)', color: 'white' }}
+                >
+                  <span>👤</span>
+                  <span>Manual Only</span>
                 </span>
               )}
               <span className="text-sm text-tertiary">•</span>

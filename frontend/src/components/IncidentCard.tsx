@@ -170,41 +170,37 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium" style={{ color: `rgb(var(--card-text-secondary))` }}>{item.incidentNumber}</span>
-              {/* Agent classification badges */}
+              {/* Subtle agent classification icons */}
               {item.actionable && item.incidentType === 'real_system' && (
                 <span 
-                  className="px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1"
-                  style={{ backgroundColor: 'rgb(34, 197, 94)', color: 'white' }}
-                  title="AI agents can take automated actions"
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  title="AI Agent Ready - can take automated actions"
                 >
-                  🤖 Agent Ready
+                  🤖
                 </span>
               )}
               {item.incidentType === 'synthetic' && (
                 <span 
-                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                  style={{ backgroundColor: 'rgb(168, 85, 247)', color: 'white' }}
-                  title="Training scenario - no real systems affected"
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  title="Synthetic - training scenario"
                 >
-                  📝 Synthetic
+                  📝
                 </span>
               )}
               {item.incidentType === 'training' && (
                 <span 
-                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                  style={{ backgroundColor: 'rgb(59, 130, 246)', color: 'white' }}
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
                   title="Training scenario"
                 >
-                  🎓 Training
+                  🎓
                 </span>
               )}
               {item.remediationMode === 'manual' && (
                 <span 
-                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                  style={{ backgroundColor: 'rgb(234, 88, 12)', color: 'white' }}
-                  title="Requires manual intervention"
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  title="Manual remediation required"
                 >
-                  👤 Manual Only
+                  👤
                 </span>
               )}
             </div>
@@ -381,8 +377,9 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                   <svg 
                     className="w-4 h-4" 
                     fill="none" 
-                    stroke="white" 
+                    stroke="currentColor" 
                     viewBox="0 0 24 24"
+                    style={{ color: `rgb(var(--card-text-tertiary))` }}
                   >
                     <path 
                       strokeLinecap="round" 
