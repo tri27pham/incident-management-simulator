@@ -18,6 +18,12 @@ export interface BackendIncident {
   created_at: string;
   updated_at: string;
   status_history?: BackendStatusHistory[];
+  // Agent classification fields
+  incident_type?: 'real_system' | 'synthetic' | 'training';
+  actionable?: boolean;
+  affected_systems?: string[];
+  remediation_mode?: 'automated' | 'manual' | 'advisory';
+  metadata?: Record<string, any>;
 }
 
 export interface IncidentAnalysis {

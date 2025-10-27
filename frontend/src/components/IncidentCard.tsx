@@ -168,8 +168,45 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
         >
           <div onClick={handleCardClick} className="cursor-pointer">
           <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium" style={{ color: `rgb(var(--card-text-secondary))` }}>{item.incidentNumber}</span>
+              {/* Agent classification badges */}
+              {item.actionable && item.incidentType === 'real_system' && (
+                <span 
+                  className="px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1"
+                  style={{ backgroundColor: 'rgb(34, 197, 94)', color: 'white' }}
+                  title="AI agents can take automated actions"
+                >
+                  🤖 Agent Ready
+                </span>
+              )}
+              {item.incidentType === 'synthetic' && (
+                <span 
+                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  style={{ backgroundColor: 'rgb(168, 85, 247)', color: 'white' }}
+                  title="Training scenario - no real systems affected"
+                >
+                  📝 Synthetic
+                </span>
+              )}
+              {item.incidentType === 'training' && (
+                <span 
+                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  style={{ backgroundColor: 'rgb(59, 130, 246)', color: 'white' }}
+                  title="Training scenario"
+                >
+                  🎓 Training
+                </span>
+              )}
+              {item.remediationMode === 'manual' && (
+                <span 
+                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  style={{ backgroundColor: 'rgb(234, 88, 12)', color: 'white' }}
+                  title="Requires manual intervention"
+                >
+                  👤 Manual Only
+                </span>
+              )}
             </div>
             <span className="text-xs" style={{ color: `rgb(var(--card-text-tertiary))` }}>{item.timeElapsed}</span>
           </div>

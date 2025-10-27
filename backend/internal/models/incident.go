@@ -1,10 +1,40 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
+
+// JSONB is a custom type for PostgreSQL JSONB fields
+type JSONB map[string]interface{}
+
+// Scan implements the sql.Scanner interface for JSONB
+func (j *JSONB) Scan(value interface{}) error {
+	if value == nil {
+		*j = make(map[string]interface{})
+		return nil
+	}
+	
+	bytes, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("failed to unmarshal JSONB value: %v", value)
+	}
+	
+	return json.Unmarshal(bytes, j)
+}
+
+// Value implements the driver.Valuer interface for JSONB
+func (j JSONB) Value() (driver.Value, error) {
+	if j == nil {
+		return json.Marshal(map[string]interface{}{})
+	}
+	return json.Marshal(j)
+}
 
 type Incident struct {
 	ID              uuid.UUID         `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
@@ -13,9 +43,19 @@ type Incident struct {
 	Status          string            `json:"status" gorm:"default:triage"`
 	GeneratedBy     string            `json:"generated_by" gorm:"default:manual"` // "gemini", "groq", "fallback", "manual"
 	Notes           string            `json:"notes" gorm:"type:text"`
-	AffectedSystem  string            `json:"affected_system" gorm:"size:100"`    // For agent: which system is affected
-	ErrorLogs       string            `json:"error_logs" gorm:"type:text"`        // For agent: JSON array of error messages
-	MetricsSnapshot string            `json:"metrics_snapshot" gorm:"type:jsonb"` // For agent: system metrics at incident time
+	
+	// Legacy fields (kept for backward compatibility)
+	AffectedSystem  string            `json:"affected_system,omitempty" gorm:"size:100"`    // Deprecated: use AffectedSystems
+	ErrorLogs       string            `json:"error_logs,omitempty" gorm:"type:text"`        // For agent: JSON array of error messages
+	MetricsSnapshot string            `json:"metrics_snapshot,omitempty" gorm:"type:jsonb"` // Deprecated: use Metadata
+	
+	// New classification fields for AI agent safety
+	IncidentType     string         `json:"incident_type" gorm:"type:varchar(50);default:synthetic"`           // "real_system", "synthetic", "training"
+	Actionable       bool           `json:"actionable" gorm:"default:false"`                                   // Can AI agents take automated actions?
+	AffectedSystems  pq.StringArray `json:"affected_systems" gorm:"type:text[];default:'{}'"`                  // Which systems are impacted
+	RemediationMode  string         `json:"remediation_mode" gorm:"type:varchar(50);default:advisory"`         // "automated", "manual", "advisory"
+	Metadata         JSONB          `json:"metadata" gorm:"type:jsonb;default:'{}'"`                           // Extensible metadata
+	
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
 	Analysis        *IncidentAnalysis `gorm:"foreignKey:IncidentID" json:"analysis,omitempty"`

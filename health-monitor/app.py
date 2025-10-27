@@ -110,9 +110,20 @@ def create_incident(message, source, error_logs, metrics):
         incident_data = {
             "message": message,
             "source": source,
+            # Legacy fields
             "affected_system": source,
             "error_logs": json.dumps(error_logs),
-            "metrics_snapshot": json.dumps(metrics)  # Must be a JSON string, not object
+            "metrics_snapshot": json.dumps(metrics),  # Must be a JSON string, not object
+            # New classification fields (mark as real system incident)
+            "incident_type": "real_system",
+            "actionable": True,
+            "affected_systems": [source],  # Array of affected systems
+            "remediation_mode": "automated",  # Allow agents to take automated actions
+            "metadata": {
+                "health_monitor_version": "1.0",
+                "threshold": HEALTH_THRESHOLD,
+                "timestamp": datetime.now().isoformat()
+            }
         }
         
         print(f"📤 Creating incident: {message}")

@@ -452,5 +452,15 @@ func GenerateRandomIncident() (models.Incident, error) {
 		Status:          "triage",
 		GeneratedBy:     incidentData.Provider, // Track which AI generated this
 		MetricsSnapshot: "{}",                  // Empty JSON object for manually generated incidents
+		// Classification: mark AI-generated incidents as synthetic (not actionable by agents)
+		IncidentType:     "synthetic",
+		Actionable:       false,
+		AffectedSystems:  []string{}, // Empty - no real systems affected
+		RemediationMode:  "advisory", // AI can only provide suggestions, not take actions
+		Metadata:         models.JSONB{
+			"generated_by_ai": true,
+			"provider":        incidentData.Provider,
+			"scenario_type":   "training",
+		},
 	}, nil
 }

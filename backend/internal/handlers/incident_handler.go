@@ -57,6 +57,33 @@ func CreateIncidentHandler(c *gin.Context) {
 		return
 	}
 
+	// Initialize metadata if nil to prevent NULL insertion
+	if incident.Metadata == nil {
+		incident.Metadata = models.JSONB{}
+	}
+
+	// Ensure AffectedSystems is not nil
+	if incident.AffectedSystems == nil {
+		incident.AffectedSystems = []string{}
+	}
+
+	// Set defaults for classification fields if not provided
+	if incident.IncidentType == "" {
+		incident.IncidentType = "synthetic"
+	}
+	if incident.RemediationMode == "" {
+		incident.RemediationMode = "advisory"
+	}
+
+	// Ensure legacy JSONB field has valid JSON (not empty string)
+	if incident.MetricsSnapshot == "" {
+		incident.MetricsSnapshot = "{}"
+	}
+
+	// Debug logging for incident classification
+	log.Printf("📥 Creating incident: source=%s, type=%s, actionable=%v, systems=%v",
+		incident.Source, incident.IncidentType, incident.Actionable, incident.AffectedSystems)
+
 	if err := services.CreateIncident(&incident); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create incident"})
 		return

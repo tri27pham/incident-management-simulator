@@ -33,6 +33,12 @@ export interface Incident {
   statusHistory?: StatusHistoryEntry[];
   timeline?: StatusHistoryEntry[]; // Alias for statusHistory for resolved panel
   notes?: string;
+  // Agent classification fields
+  incidentType?: 'real_system' | 'synthetic' | 'training';
+  actionable?: boolean;
+  affectedSystems?: string[];
+  remediationMode?: 'automated' | 'manual' | 'advisory';
+  metadata?: Record<string, any>;
 }
 
 export type IncidentBoardState = {

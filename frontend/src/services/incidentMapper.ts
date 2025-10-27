@@ -151,6 +151,12 @@ export function mapBackendIncidentToFrontend(
     statusHistory,
     timeline: statusHistory, // Also provide as timeline for resolved panel
     notes: backendIncident.notes,
+    // Agent classification fields
+    incidentType: backendIncident.incident_type,
+    actionable: backendIncident.actionable,
+    affectedSystems: backendIncident.affected_systems,
+    remediationMode: backendIncident.remediation_mode,
+    metadata: backendIncident.metadata,
   };
   
   console.log(`[Mapper] Final incident ${backendIncident.id.slice(0, 8)}:`, {
