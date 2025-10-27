@@ -50,6 +50,7 @@ export type AgentExecutionStatus =
   | 'executing' 
   | 'verifying' 
   | 'completed' 
+  | 'cancelled'
   | 'failed';
 
 export interface AgentCommand {

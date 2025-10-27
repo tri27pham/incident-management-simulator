@@ -52,6 +52,8 @@ func SetupRouter() *gin.Engine {
 		api.POST("/incidents/:id/agent/remediate", handlers.StartAgentRemediationHandler)
 		api.GET("/incidents/:id/agent/executions", handlers.GetIncidentAgentExecutionsHandler)
 		api.GET("/agent/executions/:executionId", handlers.GetAgentExecutionHandler)
+		api.POST("/agent/executions/:executionId/approve", handlers.ApproveAgentExecutionHandler)
+		api.POST("/agent/executions/:executionId/reject", handlers.RejectAgentExecutionHandler)
 	}
 
 	return r

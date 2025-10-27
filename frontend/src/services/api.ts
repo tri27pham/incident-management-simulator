@@ -305,3 +305,25 @@ export async function getIncidentAgentExecutions(incidentId: string): Promise<Ag
   return response.json();
 }
 
+export async function approveAgentExecution(executionId: string): Promise<AgentExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/executions/${executionId}/approve`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to approve agent execution');
+  }
+  return response.json();
+}
+
+export async function rejectAgentExecution(executionId: string): Promise<AgentExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/executions/${executionId}/reject`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to reject agent execution');
+  }
+  return response.json();
+}
+

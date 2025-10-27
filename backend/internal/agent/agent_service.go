@@ -55,27 +55,24 @@ func (s *AgentService) StartRemediation(incident *models.Incident) (*models.Agen
 	return execution, nil
 }
 
-// runWorkflow executes the full multi-phase agent workflow
-func (s *AgentService) runWorkflow(execution *models.AgentExecution, incident *models.Incident) {
-	log.Printf("🤖 [Agent] Starting remediation workflow for incident %s", incident.ID.String()[:8])
-
-	// Phase 1: Thinking
-	if err := s.phaseThinking(execution, incident); err != nil {
-		s.failExecution(execution, fmt.Sprintf("Thinking phase failed: %v", err))
-		return
+// ApproveExecution continues the workflow after user approval
+func (s *AgentService) ApproveExecution(execution *models.AgentExecution) error {
+	// Get the incident
+	var incident models.Incident
+	if err := db.DB.First(&incident, "id = ?", execution.IncidentID).Error; err != nil {
+		return fmt.Errorf("incident not found: %w", err)
 	}
 
-	// Phase 2: Command Preview
-	if err := s.phaseCommandPreview(execution, incident); err != nil {
-		s.failExecution(execution, fmt.Sprintf("Command preview failed: %v", err))
-		return
-	}
+	log.Printf("✅ [Agent] Execution %s approved - continuing workflow", execution.ID.String()[:8])
 
-	// Phase 3: Auto-approve for now (in production, this would wait for human approval)
-	execution.Status = models.StatusAwaitingApproval
-	db.DB.Save(execution)
-	time.Sleep(2 * time.Second) // Simulate approval delay
+	// Continue workflow in goroutine
+	go s.continueWorkflowAfterApproval(execution, &incident)
 
+	return nil
+}
+
+// continueWorkflowAfterApproval resumes the workflow after approval
+func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExecution, incident *models.Incident) {
 	// Phase 4: Execution
 	if err := s.phaseExecution(execution, incident); err != nil {
 		s.failExecution(execution, fmt.Sprintf("Execution phase failed: %v", err))
@@ -132,6 +129,30 @@ func (s *AgentService) runWorkflow(execution *models.AgentExecution, incident *m
 	}
 
 	log.Printf("✅ [Agent] Remediation completed successfully for incident %s", incident.ID.String()[:8])
+}
+
+// runWorkflow executes the full multi-phase agent workflow
+func (s *AgentService) runWorkflow(execution *models.AgentExecution, incident *models.Incident) {
+	log.Printf("🤖 [Agent] Starting remediation workflow for incident %s", incident.ID.String()[:8])
+
+	// Phase 1: Thinking
+	if err := s.phaseThinking(execution, incident); err != nil {
+		s.failExecution(execution, fmt.Sprintf("Thinking phase failed: %v", err))
+		return
+	}
+
+	// Phase 2: Command Preview
+	if err := s.phaseCommandPreview(execution, incident); err != nil {
+		s.failExecution(execution, fmt.Sprintf("Command preview failed: %v", err))
+		return
+	}
+
+	// Phase 3: Wait for human approval
+	execution.Status = models.StatusAwaitingApproval
+	db.DB.Save(execution)
+
+	log.Printf("⏳ [Agent] Execution %s is awaiting user approval", execution.ID.String()[:8])
+	// Workflow will be resumed by ApproveExecution handler
 }
 
 // phaseThinking: AI analyzes the incident and decides what action to take

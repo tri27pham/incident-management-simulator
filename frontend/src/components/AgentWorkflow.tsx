@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AgentExecution } from '../types';
-import { startAgentRemediation, getIncidentAgentExecutions, getAgentExecution } from '../services/api';
+import { startAgentRemediation, getIncidentAgentExecutions, getAgentExecution, approveAgentExecution, rejectAgentExecution } from '../services/api';
 
 interface AgentWorkflowProps {
   incidentId: string;
@@ -12,6 +12,8 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pollingExecution, setPollingExecution] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [expandedCancelledIds, setExpandedCancelledIds] = useState<Set<string>>(new Set());
 
   // Fetch existing executions on mount
   useEffect(() => {
@@ -100,6 +102,45 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
     }
   };
 
+  const handleApprove = async (executionId: string) => {
+    setApprovingId(executionId);
+    try {
+      const execution = await approveAgentExecution(executionId);
+      const mapped = mapExecution(execution);
+      setExecutions(prev => prev.map(ex => ex.id === executionId ? mapped : ex));
+      setPollingExecution(executionId); // Resume polling
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleReject = async (executionId: string) => {
+    setApprovingId(executionId);
+    try {
+      const execution = await rejectAgentExecution(executionId);
+      const mapped = mapExecution(execution);
+      setExecutions(prev => prev.map(ex => ex.id === executionId ? mapped : ex));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const toggleCancelledExpanded = (executionId: string) => {
+    setExpandedCancelledIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(executionId)) {
+        newSet.delete(executionId);
+      } else {
+        newSet.add(executionId);
+      }
+      return newSet;
+    });
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'thinking': return '🧠';
@@ -108,6 +149,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
       case 'executing': return '⚡';
       case 'verifying': return '🔍';
       case 'completed': return '✅';
+      case 'cancelled': return '🚫';
       case 'failed': return '❌';
       default: return '⏺️';
     }
@@ -124,6 +166,8 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
         return 'rgb(168, 85, 247)'; // purple
       case 'completed':
         return 'rgb(34, 197, 94)'; // green
+      case 'cancelled':
+        return 'rgb(107, 114, 128)'; // gray
       case 'failed':
         return 'rgb(239, 68, 68)'; // red
       default:
@@ -163,31 +207,33 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
     );
   }
 
+  // Check if there's an active (non-cancelled, non-failed) execution
+  const hasActiveExecution = executions.some(ex => 
+    ex.status !== 'cancelled' && ex.status !== 'failed'
+  );
+
   return (
     <div className="space-y-4">
       {/* Start Remediation Button */}
-      {executions.length === 0 && (
+      {!hasActiveExecution && (
         <button
           onClick={handleStartRemediation}
           disabled={loading}
           className="w-full py-3 px-4 rounded-lg font-medium transition-all"
           style={{
-            backgroundColor: loading ? 'rgb(107, 114, 128)' : 'rgb(34, 197, 94)',
+            backgroundColor: loading ? 'rgb(107, 114, 128)' : 'rgb(249, 115, 22)',
             color: 'white',
             opacity: loading ? 0.6 : 1,
             cursor: loading ? 'not-allowed' : 'pointer',
           }}
         >
           {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin">⚙️</span>
+            <span className="flex items-center justify-center">
+              <span className="animate-spin mr-2">⚙️</span>
               Starting AI Agent...
             </span>
           ) : (
-            <span className="flex items-center justify-center gap-2">
-              <span>🤖</span>
-              Start AI Agent Remediation
-            </span>
+            'Start AI Agent Remediation'
           )}
         </button>
       )}
@@ -206,45 +252,129 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
       )}
 
       {/* Execution History */}
-      {executions.map((execution) => (
-        <div
-          key={execution.id}
-          className="rounded-lg overflow-hidden"
-          style={{
-            backgroundColor: 'rgb(var(--bg-secondary))',
-            border: '1px solid rgb(var(--border-color))'
-          }}
-        >
-          {/* Header */}
-          <div 
-            className="p-4 flex items-center justify-between"
-            style={{ borderBottom: '1px solid rgb(var(--border-color))' }}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{getStatusIcon(execution.status)}</span>
-              <div>
-                <div className="font-medium" style={{ color: 'rgb(var(--text-primary))' }}>
-                  {formatStatus(execution.status)}
-                </div>
-                <div className="text-xs" style={{ color: 'rgb(var(--text-tertiary))' }}>
-                  {new Date(execution.created_at).toLocaleString()}
-                </div>
-              </div>
-            </div>
-            <div
-              className="px-3 py-1 rounded-full text-xs font-medium"
+      {executions.map((execution) => {
+        const isCancelled = execution.status === 'cancelled';
+        const isExpanded = expandedCancelledIds.has(execution.id);
+        
+        // Collapsed view for cancelled executions
+        if (isCancelled && !isExpanded) {
+          return (
+            <button
+              key={execution.id}
+              onClick={() => toggleCancelledExpanded(execution.id)}
+              className="w-full rounded-lg p-3 flex items-center justify-between hover:opacity-80 transition-opacity"
               style={{
-                backgroundColor: `${getStatusColor(execution.status)}20`,
-                color: getStatusColor(execution.status)
+                backgroundColor: 'rgba(107, 114, 128, 0.1)',
+                border: '1px solid rgb(107, 114, 128)'
               }}
             >
-              {formatStatus(execution.status)}
+              <div className="flex items-center gap-3">
+                <span className="text-xl">🚫</span>
+                <div className="text-left">
+                  <div className="text-sm font-medium" style={{ color: 'rgb(107, 114, 128)' }}>
+                    Cancelled
+                  </div>
+                  <div className="text-xs" style={{ color: 'rgb(var(--text-tertiary))' }}>
+                    {new Date(execution.created_at).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+              <svg 
+                className="w-4 h-4"
+                style={{ color: 'rgb(107, 114, 128)' }}
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          );
+        }
+        
+        // Full view for active executions or expanded cancelled ones
+        return (
+          <div
+            key={execution.id}
+            className="rounded-lg overflow-hidden"
+            style={{
+              backgroundColor: 'rgb(var(--bg-secondary))',
+              border: '1px solid rgb(var(--border-color))'
+            }}
+          >
+            {/* Header */}
+            <div 
+              className="p-4 flex items-center justify-between"
+              style={{ borderBottom: '1px solid rgb(var(--border-color))' }}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{getStatusIcon(execution.status)}</span>
+                <div>
+                  <div className="font-medium" style={{ color: 'rgb(var(--text-primary))' }}>
+                    {formatStatus(execution.status)}
+                  </div>
+                  <div className="text-xs" style={{ color: 'rgb(var(--text-tertiary))' }}>
+                    {new Date(execution.created_at).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div
+                  className="px-3 py-1 rounded-full text-xs font-medium"
+                  style={{
+                    backgroundColor: `${getStatusColor(execution.status)}20`,
+                    color: getStatusColor(execution.status)
+                  }}
+                >
+                  {formatStatus(execution.status)}
+                </div>
+                {isCancelled && (
+                  <button
+                    onClick={() => toggleCancelledExpanded(execution.id)}
+                    className="p-1 hover:opacity-70 transition-opacity"
+                  >
+                    <svg 
+                      className="w-4 h-4 transform rotate-180"
+                      style={{ color: 'rgb(var(--text-tertiary))' }}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* Content */}
-          <div className="p-4 space-y-4">
+            {/* Content */}
+            <div className="p-4 space-y-4">
             {/* Phase 1: Thinking */}
+            {execution.status === 'thinking' && !execution.analysis && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'rgb(var(--text-primary))' }}>
+                  <span>🧠</span>
+                  <span>Analyzing Incident...</span>
+                </div>
+                <div 
+                  className="p-4 rounded flex items-center justify-center"
+                  style={{ 
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  }}
+                >
+                  <div className="flex flex-col items-center gap-3">
+                    <svg className="animate-spin h-8 w-8" style={{ color: 'rgb(59, 130, 246)' }} fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
+                      AI is analyzing the incident and determining the best course of action...
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {execution.analysis && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'rgb(var(--text-primary))' }}>
@@ -371,6 +501,103 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
               </div>
             )}
 
+            {/* Approval Prompt / Execution Status */}
+            {(execution.status === 'awaiting_approval' || execution.status === 'executing' || execution.status === 'verifying') && (
+              <div 
+                className="p-4 rounded-lg"
+                style={{ 
+                  backgroundColor: execution.status === 'awaiting_approval' 
+                    ? 'rgba(249, 115, 22, 0.1)' 
+                    : 'rgba(59, 130, 246, 0.1)',
+                  border: execution.status === 'awaiting_approval'
+                    ? '2px solid rgb(249, 115, 22)'
+                    : '2px solid rgb(59, 130, 246)'
+                }}
+              >
+                {execution.status === 'awaiting_approval' ? (
+                  <>
+                    <div className="flex items-start gap-3 mb-4">
+                      <svg className="w-6 h-6 shrink-0" style={{ color: 'rgb(249, 115, 22)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div>
+                        <div className="font-semibold mb-1" style={{ color: 'rgb(249, 115, 22)' }}>
+                          Approval Required
+                        </div>
+                        <p className="text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
+                          The AI agent has analyzed the incident and prepared a remediation plan. 
+                          Review the commands and risks above before proceeding.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleApprove(execution.id)}
+                        disabled={approvingId === execution.id}
+                        className="flex-1 py-2 px-4 rounded-lg font-medium transition-all"
+                        style={{
+                          backgroundColor: approvingId === execution.id ? 'rgb(107, 114, 128)' : 'rgb(34, 197, 94)',
+                          color: 'white',
+                          opacity: approvingId === execution.id ? 0.6 : 1,
+                          cursor: approvingId === execution.id ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {approvingId === execution.id ? 'Approving...' : '✓ Approve & Execute'}
+                      </button>
+                      <button
+                        onClick={() => handleReject(execution.id)}
+                        disabled={approvingId === execution.id}
+                        className="flex-1 py-2 px-4 rounded-lg font-medium transition-all"
+                        style={{
+                          backgroundColor: approvingId === execution.id ? 'rgb(107, 114, 128)' : 'rgb(239, 68, 68)',
+                          color: 'white',
+                          opacity: approvingId === execution.id ? 0.6 : 1,
+                          cursor: approvingId === execution.id ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {approvingId === execution.id ? 'Rejecting...' : '✗ Reject'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center gap-3 py-2">
+                    <svg className="animate-spin h-6 w-6" style={{ color: 'rgb(59, 130, 246)' }} fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="font-medium" style={{ color: 'rgb(59, 130, 246)' }}>
+                      {execution.status === 'executing' ? '⚡ Executing commands...' : '🔍 Verifying results...'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Completion Status */}
+            {execution.status === 'completed' && execution.success && execution.verification_passed && (
+              <div 
+                className="p-4 rounded-lg"
+                style={{ 
+                  backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                  border: '2px solid rgb(34, 197, 94)'
+                }}
+              >
+                <div className="flex items-center justify-center gap-3 py-2">
+                  <svg className="w-8 h-8" style={{ color: 'rgb(34, 197, 94)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <div className="font-semibold" style={{ color: 'rgb(34, 197, 94)' }}>
+                      ✅ Incident Resolved Successfully
+                    </div>
+                    <p className="text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
+                      All remediation actions completed and verified. The incident has been automatically resolved.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Phase 3: Execution Logs */}
             {execution.execution_logs && Array.isArray(execution.execution_logs) && execution.execution_logs.length > 0 && (
               <div className="space-y-2">
@@ -465,8 +692,35 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
               </div>
             )}
 
-            {/* Error Message */}
-            {execution.error_message && (
+            {/* Cancelled/Rejected Status */}
+            {execution.status === 'cancelled' && (
+              <div 
+                className="p-4 rounded-lg"
+                style={{ 
+                  backgroundColor: 'rgba(107, 114, 128, 0.1)',
+                  border: '2px solid rgb(107, 114, 128)'
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6 shrink-0" style={{ color: 'rgb(107, 114, 128)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <div className="font-semibold" style={{ color: 'rgb(107, 114, 128)' }}>
+                      Execution Cancelled
+                    </div>
+                    <p className="text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
+                      {execution.error_message === 'Rejected by user' 
+                        ? 'You rejected this remediation plan. You can start a new execution if needed.'
+                        : execution.error_message || 'This execution was cancelled.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message (for actual errors, not rejections) */}
+            {execution.error_message && execution.status === 'failed' && (
               <div 
                 className="p-3 rounded text-sm"
                 style={{ 
@@ -479,24 +733,10 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
                 {execution.error_message}
               </div>
             )}
-
-            {/* Success Summary */}
-            {execution.status === 'completed' && execution.success && (
-              <div 
-                className="p-3 rounded text-sm flex items-center gap-2"
-                style={{ 
-                  backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                  border: '1px solid rgb(34, 197, 94)',
-                  color: 'rgb(34, 197, 94)'
-                }}
-              >
-                <span className="text-xl">🎉</span>
-                <span className="font-medium">Remediation completed successfully!</span>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
