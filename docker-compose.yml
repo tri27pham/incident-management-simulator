@@ -110,6 +110,8 @@ services:
       - "8002:8002"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    tmpfs:
+      - /var/log:size=2G  # Small 2GB tmpfs volume for fast disk testing
     networks:
       - incident-net
 

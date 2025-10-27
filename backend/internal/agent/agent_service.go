@@ -176,16 +176,18 @@ You can ONLY use these available actions:
 - "kill_idle_connections" - Kill idle PostgreSQL connections to free up connection pool (best for connection exhaustion)
 - "vacuum_table" - Run VACUUM on PostgreSQL table to remove dead tuples and reduce bloat (best for table bloat/dead tuple issues)
 - "restart_postgres" - Restart the PostgreSQL container to recover from connection issues
+- "cleanup_old_logs" - Delete old log files to free up disk space (best for disk space issues)
 
 Choose the action that best addresses the issue. 
 - For Redis memory problems, use clear_redis_cache
 - For PostgreSQL connection pool problems, use kill_idle_connections
 - For PostgreSQL table bloat/dead tuples, use vacuum_table
+- For disk space problems, use cleanup_old_logs
 
 Respond ONLY in valid JSON:
 {
   "analysis": "brief technical analysis of the root cause",
-  "recommended_action": "clear_redis_cache" or "restart_redis" or "kill_idle_connections" or "vacuum_table" or "restart_postgres",
+  "recommended_action": "clear_redis_cache" or "restart_redis" or "kill_idle_connections" or "vacuum_table" or "restart_postgres" or "cleanup_old_logs",
   "reasoning": "why this action will fix the issue"
 }`, incident.Message, incident.Source, incident.AffectedSystems)
 
@@ -435,6 +437,22 @@ func (s *AgentService) generateCommands(action string, incident *models.Incident
 				{Level: "low", Description: "All connections will be dropped", Mitigation: "Expected behavior for restart"},
 			}
 
+	case "cleanup_old_logs":
+		return []models.Command{
+				{
+					Name:        "Clean Up Old Log Files",
+					Command:     "http_post",
+					Args:        []string{"http://health-monitor:8002/clear/disk"},
+					Target:      "disk-monitor",
+					Description: "Remove old log files to free up disk space",
+				},
+			},
+			"Will delete test log files. No impact on running services.",
+			[]models.Risk{
+				{Level: "low", Description: "Log files will be deleted", Mitigation: "Only removes test log files created for simulation"},
+				{Level: "low", Description: "No service interruption", Mitigation: "Disk cleanup happens in the background"},
+			}
+
 	default:
 		return []models.Command{
 				{
@@ -492,6 +510,24 @@ func (s *AgentService) executeCommand(cmd models.Command, incident *models.Incid
 			log.Printf("🐳 [Agent] Restarting postgres-test container...")
 			// For now, return success message (actual Docker API implementation can be added later)
 			return "PostgreSQL container restart initiated", nil
+		}
+	}
+
+	// For disk cleanup actions, call the health-monitor service
+	if cmd.Target == "disk-monitor" {
+		if cmd.Command == "http_post" {
+			url := cmd.Args[0]
+			resp, err := http.Post(url, "application/json", nil)
+			if err != nil {
+				return "", fmt.Errorf("failed to call %s: %w", url, err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode == 200 {
+				body, _ := ioutil.ReadAll(resp.Body)
+				return string(body), nil
+			}
+			return fmt.Sprintf("Failed with status %d", resp.StatusCode), fmt.Errorf("unexpected status")
 		}
 	}
 
@@ -611,6 +647,68 @@ func (s *AgentService) runVerificationChecks(action string, incident *models.Inc
 			Description: "Verify PostgreSQL is responding to queries",
 			Passed:      status.Services["postgres-test"].Status == "healthy",
 			Result:      status.Services["postgres-test"].Status,
+			Expected:    "healthy",
+		})
+	}
+
+	// For disk cleanup actions, check disk space
+	if action == "cleanup_old_logs" {
+		healthMonitorURL := os.Getenv("HEALTH_MONITOR_URL")
+		if healthMonitorURL == "" {
+			healthMonitorURL = "http://localhost:8002"
+		}
+
+		resp, err := http.Get(healthMonitorURL + "/status")
+		if err != nil {
+			checks = append(checks, models.VerificationCheck{
+				CheckName:   "Disk Space Check",
+				Description: "Verify disk space is available",
+				Passed:      false,
+				Result:      "Failed to connect to health monitor",
+				Expected:    "Health > 70%",
+			})
+			return checks
+		}
+		defer resp.Body.Close()
+
+		var status struct {
+			Services map[string]struct {
+				Health      float64 `json:"health"`
+				Status      string  `json:"status"`
+				UsedPercent float64 `json:"used_percent"`
+				FreeMB      float64 `json:"free_mb"`
+			} `json:"services"`
+		}
+
+		body, _ := ioutil.ReadAll(resp.Body)
+		json.Unmarshal(body, &status)
+
+		diskHealth := status.Services["disk-space"].Health
+		usedPercent := status.Services["disk-space"].UsedPercent
+		freeMB := status.Services["disk-space"].FreeMB
+		passed := diskHealth >= 70
+
+		checks = append(checks, models.VerificationCheck{
+			CheckName:   "Disk Space Health",
+			Description: "Verify disk space is below threshold",
+			Passed:      passed,
+			Result:      fmt.Sprintf("Health: %.0f%% (Used: %.1f%%)", diskHealth, usedPercent),
+			Expected:    "Health >= 70% (Used < 60%)",
+		})
+
+		checks = append(checks, models.VerificationCheck{
+			CheckName:   "Free Space Available",
+			Description: "Verify sufficient free space",
+			Passed:      freeMB > 100,
+			Result:      fmt.Sprintf("%.0f MB free", freeMB),
+			Expected:    "> 100 MB free",
+		})
+
+		checks = append(checks, models.VerificationCheck{
+			CheckName:   "Disk Availability",
+			Description: "Verify disk is accessible",
+			Passed:      status.Services["disk-space"].Status == "healthy",
+			Result:      status.Services["disk-space"].Status,
 			Expected:    "healthy",
 		})
 	}

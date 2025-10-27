@@ -199,6 +199,23 @@ function App() {
       idle_ratio: number;
       status: string;
     };
+    'postgres-bloat'?: {
+      health: number;
+      dead_tuples: number;
+      live_tuples: number;
+      dead_ratio: number;
+      status: string;
+      will_trigger_incident: boolean;
+    };
+    'disk-space'?: {
+      health: number;
+      used_percent: number;
+      used_mb: number;
+      free_mb: number;
+      total_mb: number;
+      status: string;
+      will_trigger_incident: boolean;
+    };
   } | null>(null);
   
   // Use a ref to avoid WebSocket reconnections when modal changes
@@ -381,18 +398,38 @@ function App() {
       console.log('🧹 Step 1.5: Clearing PostgreSQL connections...');
       try {
         const postgresResult = await api.clearPostgres();
-        console.log('✅ PostgreSQL cleared successfully:', postgresResult);
+        console.log('✅ PostgreSQL connections cleared successfully:', postgresResult);
+      } catch (clearError) {
+        console.error('❌ Failed to clear PostgreSQL connections:', clearError);
+      }
+
+      // Step 1.6: Clear PostgreSQL bloat to restore service health
+      console.log('🧹 Step 1.6: Clearing PostgreSQL bloat...');
+      try {
+        const postgresBloatResult = await api.clearPostgresBloat();
+        console.log('✅ PostgreSQL bloat cleared successfully:', postgresBloatResult);
+      } catch (clearError) {
+        console.error('❌ Failed to clear PostgreSQL bloat:', clearError);
+      }
+
+      // Step 1.7: Clear disk space to restore service health
+      console.log('🧹 Step 1.7: Clearing disk space...');
+      try {
+        const diskResult = await api.clearDisk();
+        console.log('✅ Disk space cleared successfully:', diskResult);
         
-        // Fetch updated health status for both services
+        // Fetch updated health status for all services
         const healthStatus = await api.getHealthMonitorStatus();
         console.log('📊 Systems health after clear:', {
           redis: healthStatus.services['redis-test'].health,
-          postgres: healthStatus.services['postgres-test']?.health
+          postgres: healthStatus.services['postgres-test']?.health,
+          postgresBloat: healthStatus.services['postgres-bloat']?.health,
+          disk: healthStatus.services['disk-space']?.health
         });
         setSystemsHealth(healthStatus.services);
       } catch (clearError) {
-        console.error('❌ Failed to clear PostgreSQL:', clearError);
-        setError('Failed to restore PostgreSQL health');
+        console.error('❌ Failed to clear disk space:', clearError);
+        setError('Failed to restore system health');
         setTimeout(() => setError(null), 3000);
         setIsFixingAll(false);
         return;
@@ -703,6 +740,71 @@ function App() {
     } catch (error) {
       console.error('Failed to trigger PostgreSQL bloat:', error);
       setError('Failed to trigger PostgreSQL bloat');
+      setTimeout(() => setError(null), 3000);
+      setProgressBar(null);
+    } finally {
+      setIsTriggeringFailure(false);
+    }
+  };
+
+  const handleTriggerDiskFull = async () => {
+    setIsTriggeringFailure(true);
+    setShowFailureDropdown(false);
+    
+    try {
+      console.log('🔥 Triggering disk space exhaustion...');
+      setProgressBar({ 
+        show: true, 
+        message: 'Filling disk with log files...', 
+        progress: 30 
+      });
+      
+      const result = await api.triggerDiskFull();
+      console.log('✅ Disk space filled:', result);
+      
+      setProgressBar({ 
+        show: true, 
+        message: 'Waiting for incident detection...', 
+        progress: 70 
+      });
+      
+      // Wait for incident to be created (health monitor checks every 5 seconds)
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      setProgressBar({ 
+        show: true, 
+        message: 'Incident detected!', 
+        progress: 100 
+      });
+      
+      // Reload board
+      const [backendIncidents, backendResolvedIncidents] = await Promise.all([
+        api.fetchIncidents(),
+        api.fetchResolvedIncidents(),
+      ]);
+      
+      const newBoard: IncidentBoardState = {
+        Triage: { name: 'Triage', items: [] },
+        Investigating: { name: 'Investigating', items: [] },
+        Fixing: { name: 'Fixing', items: [] },
+      };
+
+      backendIncidents.forEach((backendIncident) => {
+        const incident = mapBackendIncidentToFrontend(backendIncident);
+        const status = mapBackendStatusToFrontend(backendIncident.status);
+        newBoard[status].items.push(incident);
+      });
+
+      const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
+      setBoard(newBoard);
+      setResolvedIncidents(resolved);
+      
+      // Clear progress bar after 2 seconds
+      setTimeout(() => setProgressBar(null), 2000);
+      
+    } catch (error) {
+      console.error('Failed to trigger disk full:', error);
+      setError('Failed to trigger disk full');
       setTimeout(() => setError(null), 3000);
       setProgressBar(null);
     } finally {
@@ -1474,6 +1576,40 @@ function App() {
                       </div>
                     </div>
                   </button>
+                  
+                  <button
+                    onClick={handleTriggerDiskFull}
+                    disabled={isTriggeringFailure}
+                    className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
+                    style={{
+                      color: `rgb(var(--text-primary))`,
+                      backgroundColor: `rgb(var(--bg-secondary))`,
+                      borderColor: `rgb(var(--border-color))`,
+                      opacity: isTriggeringFailure ? 0.5 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isTriggeringFailure) {
+                        e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
+                        e.currentTarget.style.transform = 'scale(1.02)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isTriggeringFailure) {
+                        e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(202, 138, 4)' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                    </svg>
+                    <div className="flex-1">
+                      <div className="font-medium">Fill Disk Space</div>
+                      <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
+                        Create large log files (needs cleanup)
+                      </div>
+                    </div>
+                  </button>
                 </div>
               )}
             </div>
@@ -1824,6 +1960,110 @@ function App() {
                     </div>
                     <div className="text-xs text-tertiary">
                       {systemsHealth['postgres-test'].active_connections} active
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Disk Space Service Card */}
+            {systemsHealth && systemsHealth['disk-space'] && (
+              <div 
+                className="rounded-lg p-5 border shrink-0"
+                style={{
+                  backgroundColor: `rgb(var(--card-bg))`,
+                  borderColor: `rgb(var(--border-color))`,
+                  width: '400px',
+                  minWidth: '400px',
+                }}
+              >
+                {/* Header with icon, name, and health score */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    {/* Service Icon */}
+                    <div 
+                      className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                      style={{
+                        backgroundColor: systemsHealth['disk-space'].health >= 70 
+                          ? 'rgba(34, 197, 94, 0.1)' 
+                          : 'rgba(239, 68, 68, 0.1)',
+                      }}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{
+                        color: systemsHealth['disk-space'].health >= 70 
+                          ? 'rgb(34, 197, 94)' 
+                          : 'rgb(239, 68, 68)'
+                      }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                      </svg>
+                    </div>
+
+                    {/* Service Info */}
+                    <div>
+                      <h3 className="text-base font-semibold text-primary">Disk Space</h3>
+                      <p className="text-xs text-secondary">Storage monitoring</p>
+                    </div>
+                  </div>
+
+                  {/* Health Score Badge */}
+                  <div className="text-right">
+                    <div className="text-2xl font-bold" style={{
+                      color: systemsHealth['disk-space'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)'
+                    }}>
+                      {systemsHealth['disk-space'].health}%
+                    </div>
+                    <div className="text-xs text-secondary">Health</div>
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className="mb-4">
+                  <div 
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
+                    style={{
+                      backgroundColor: systemsHealth['disk-space'].health >= 70 
+                        ? 'rgba(34, 197, 94, 0.1)' 
+                        : 'rgba(239, 68, 68, 0.1)',
+                      color: systemsHealth['disk-space'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)',
+                      border: `1px solid ${systemsHealth['disk-space'].health >= 70 
+                        ? 'rgb(34, 197, 94)' 
+                        : 'rgb(239, 68, 68)'}`,
+                    }}
+                  >
+                    <div 
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{
+                        backgroundColor: systemsHealth['disk-space'].health >= 70 
+                          ? 'rgb(34, 197, 94)' 
+                          : 'rgb(239, 68, 68)'
+                      }}
+                    />
+                    {systemsHealth['disk-space'].health >= 70 ? 'Operational' : 'Degraded'}
+                  </div>
+                </div>
+
+                {/* Metrics in a compact 2x2 grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Disk Usage</div>
+                    <div className="text-base font-semibold text-primary">
+                      {systemsHealth['disk-space'].used_percent.toFixed(1)}%
+                    </div>
+                    <div className="text-xs text-tertiary">
+                      {systemsHealth['disk-space'].used_mb.toFixed(0)} MB used
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Free Space</div>
+                    <div className="text-base font-semibold text-primary">
+                      {systemsHealth['disk-space'].free_mb.toFixed(0)} MB
+                    </div>
+                    <div className="text-xs text-tertiary">
+                      of {systemsHealth['disk-space'].total_mb.toFixed(0)} MB
                     </div>
                   </div>
                 </div>

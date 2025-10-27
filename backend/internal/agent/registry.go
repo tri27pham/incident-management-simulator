@@ -29,6 +29,12 @@ var ActionableSystems = map[string]SystemInfo{
 		Description: "Mock PostgreSQL instance for testing agent actions",
 		Actions:     []string{"kill_idle_connections", "vacuum_table", "restart"},
 	},
+	"disk-monitor": {
+		Name:        "disk-monitor",
+		Actionable:  true,
+		Description: "Disk space monitoring and cleanup",
+		Actions:     []string{"cleanup_old_logs", "restart"},
+	},
 
 	// Synthetic systems from incident generator (NOT actionable)
 	"api-gateway": {
