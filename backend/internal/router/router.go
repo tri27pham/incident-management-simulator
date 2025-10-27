@@ -44,8 +44,19 @@ func SetupRouter() *gin.Engine {
 		api.POST("/incidents/generate", handlers.GenerateRandomIncidentHandler)
 		api.GET("/incidents/:id", handlers.GetIncidentByIDHandler)
 		api.PATCH("/incidents/:id", handlers.UpdateIncidentHandler)
+		api.DELETE("/incidents/:id", handlers.DeleteIncidentHandler)
 		api.POST("/incidents/:id/diagnose", handlers.TriggerAIDiagnosisHandler)
 		api.POST("/incidents/:id/suggest-fix", handlers.TriggerAISuggestedFixHandler)
+
+		// AI Agent routes
+		api.POST("/incidents/:id/agent/remediate", handlers.StartAgentRemediationHandler)
+		api.GET("/incidents/:id/agent/executions", handlers.GetIncidentAgentExecutionsHandler)
+		api.GET("/agent/executions/:executionId", handlers.GetAgentExecutionHandler)
+		api.POST("/agent/executions/:executionId/approve", handlers.ApproveAgentExecutionHandler)
+		api.POST("/agent/executions/:executionId/reject", handlers.RejectAgentExecutionHandler)
+
+		// Database reset broadcast
+		api.POST("/reset", handlers.ResetDatabaseHandler)
 	}
 
 	return r

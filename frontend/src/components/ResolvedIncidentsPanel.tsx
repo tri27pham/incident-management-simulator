@@ -1,6 +1,7 @@
-import { useState } from 'react';
 import { Incident } from '../types';
+import { useState, useEffect } from 'react';
 import { SeverityBars } from './SeverityBars';
+import { getIncidentAgentExecutions, AgentExecutionResponse } from '../services/api';
 
 interface ResolvedIncidentsPanelProps {
   isOpen: boolean;
@@ -10,16 +11,51 @@ interface ResolvedIncidentsPanelProps {
 
 export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedIncidentsPanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [agentExecutions, setAgentExecutions] = useState<Map<string, AgentExecutionResponse[]>>(new Map());
+  const [loadingExecutions, setLoadingExecutions] = useState<Set<string>>(new Set());
+
+  // Fetch agent executions when an incident is expanded
+  useEffect(() => {
+    if (!expandedId) return;
+
+    const incident = incidents.find(inc => inc.id === expandedId);
+    if (!incident || !incident.actionable || incident.incidentType !== 'real_system') return;
+
+    // Check if we already have the executions
+    if (agentExecutions.has(expandedId)) return;
+
+    // Fetch executions
+    setLoadingExecutions(prev => new Set(prev).add(expandedId));
+    getIncidentAgentExecutions(expandedId)
+      .then(executions => {
+        setAgentExecutions(prev => {
+          const newMap = new Map(prev);
+          newMap.set(expandedId, executions);
+          return newMap;
+        });
+      })
+      .catch(err => {
+        console.error('Failed to fetch agent executions:', err);
+      })
+      .finally(() => {
+        setLoadingExecutions(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(expandedId);
+          return newSet;
+        });
+      });
+  }, [expandedId, incidents, agentExecutions]);
   return (
     <>
       {/* Backdrop with blur */}
       <div 
-        className={`fixed inset-0 bg-black z-40 transition-all duration-300 ease-in-out ${
-          isOpen ? 'opacity-100 backdrop-blur-sm' : 'opacity-0 pointer-events-none'
+        className={`fixed inset-0 transition-opacity duration-300 ease-in-out ${
+          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         style={{
-          backdropFilter: isOpen ? 'blur(4px)' : 'blur(0px)',
-          WebkitBackdropFilter: isOpen ? 'blur(4px)' : 'blur(0px)',
+          zIndex: 60,
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
           backgroundColor: 'rgba(0, 0, 0, 0.3)',
         }}
         onClick={onClose}
@@ -27,10 +63,11 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
       
       {/* Side Panel */}
       <div 
-        className={`fixed top-0 right-0 h-full w-full max-w-2xl shadow-2xl z-50 overflow-y-auto rounded-l-lg ${
+        className={`fixed top-0 right-0 h-full w-full max-w-2xl shadow-2xl overflow-y-auto rounded-l-lg ${
           isOpen ? '' : 'pointer-events-none'
         }`}
         style={{ 
+          zIndex: 70,
           backgroundColor: `rgb(var(--bg-secondary))`,
           scrollBehavior: 'smooth',
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
@@ -86,7 +123,10 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                 return (
                   <div
                     key={incident.id}
-                    onClick={() => setExpandedId(isExpanded ? null : incident.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedId(isExpanded ? null : incident.id);
+                    }}
                     className={`rounded-lg p-4 border cursor-pointer transition-all duration-200 ${
                       isExpanded ? 'shadow-lg' : 'hover:shadow-md'
                     }`}
@@ -98,11 +138,27 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                   >
                     {/* Header */}
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-medium text-secondary">{incident.incidentNumber}</span>
                         <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
                           Resolved
                         </span>
+                        {incident.actionable && incident.incidentType === 'real_system' && (
+                          <span 
+                            className="px-2 py-0.5 rounded text-xs font-medium"
+                            title="AI Agent Ready"
+                          >
+                            🤖
+                          </span>
+                        )}
+                        {incident.incidentType === 'synthetic' && (
+                          <span 
+                            className="text-xs opacity-60"
+                            title="Synthetic incident"
+                          >
+                            📝
+                          </span>
+                        )}
                       </div>
                       <span className="text-xs text-tertiary">{incident.timeElapsed}</span>
                     </div>
@@ -115,6 +171,32 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                     {/* Expanded Content */}
                     {isExpanded && (
                       <div className="mb-3 pb-3 space-y-3" style={{ borderBottom: `1px solid rgb(var(--border-color))` }}>
+                        {/* Metadata */}
+                        <div className="grid grid-cols-2 gap-2 p-3 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-secondary))` }}>
+                          <div>
+                            <p className="text-xs text-tertiary">Team</p>
+                            <p className="text-xs font-medium text-primary">{incident.team}</p>
+                          </div>
+                          {incident.generated_by && (
+                            <div>
+                              <p className="text-xs text-tertiary">Generated By</p>
+                              <p className="text-xs font-medium text-primary">{incident.generated_by}</p>
+                            </div>
+                          )}
+                          {incident.createdAt && (
+                            <div>
+                              <p className="text-xs text-tertiary">Created</p>
+                              <p className="text-xs font-medium text-primary">{incident.createdAt}</p>
+                            </div>
+                          )}
+                          {incident.incidentType && (
+                            <div>
+                              <p className="text-xs text-tertiary">Type</p>
+                              <p className="text-xs font-medium text-primary capitalize">{incident.incidentType.replace('_', ' ')}</p>
+                            </div>
+                          )}
+                        </div>
+
                         {/* Affected Services */}
                         {incident.affectedServices && incident.affectedServices.length > 0 && (
                           <div>
@@ -174,6 +256,145 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                             <div className="text-xs text-secondary max-h-32 overflow-y-auto" style={{ whiteSpace: 'pre-wrap' }}>
                               {incident.notes}
                             </div>
+                          </div>
+                        )}
+
+                        {/* AI Agent Execution (for agent-resolved incidents) */}
+                        {incident.actionable && incident.incidentType === 'real_system' && (
+                          <div className="rounded-lg p-3" style={{ backgroundColor: `rgb(var(--bg-secondary))`, border: `2px solid rgb(34, 197, 94)` }}>
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="text-sm">🤖</span>
+                              <p className="text-xs font-semibold text-primary">AI Agent Remediation</p>
+                            </div>
+
+                            {loadingExecutions.has(incident.id) ? (
+                              <div className="flex items-center justify-center py-4">
+                                <svg className="animate-spin h-5 w-5" style={{ color: 'rgb(59, 130, 246)' }} fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              </div>
+                            ) : agentExecutions.has(incident.id) && agentExecutions.get(incident.id)!.length > 0 ? (
+                              <div className="space-y-3">
+                                {agentExecutions.get(incident.id)!.map((execution) => (
+                                  <div key={execution.id} className="space-y-2">
+                                    {/* Status */}
+                                    <div className="text-xs">
+                                      <span className="text-tertiary">Status: </span>
+                                      <span className="font-medium text-green-600">
+                                        {execution.status === 'completed' && execution.success && execution.verification_passed 
+                                          ? '✅ Completed & Verified' 
+                                          : execution.status}
+                                      </span>
+                                    </div>
+
+                                    {/* Analysis */}
+                                    {execution.analysis && (
+                                      <div className="text-xs">
+                                        <span className="text-tertiary block mb-1">AI Analysis:</span>
+                                        <div 
+                                          className="p-2 rounded max-h-32 overflow-y-auto text-secondary"
+                                          style={{ backgroundColor: 'rgba(59, 130, 246, 0.05)' }}
+                                        >
+                                          {execution.analysis}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Commands */}
+                                    {execution.commands && Array.isArray(execution.commands) && execution.commands.length > 0 && (
+                                      <div className="text-xs">
+                                        <span className="text-tertiary block mb-1">Commands Executed:</span>
+                                        <div className="space-y-1">
+                                          {execution.commands.map((cmd: any, idx: number) => (
+                                            <div 
+                                              key={idx}
+                                              className="p-2 rounded font-mono text-xs"
+                                              style={{ backgroundColor: 'rgba(34, 197, 94, 0.05)', color: 'rgb(var(--text-primary))' }}
+                                            >
+                                              <div className="font-semibold">{cmd.action || cmd.type}</div>
+                                              {cmd.description && (
+                                                <div className="text-tertiary text-xs mt-1">{cmd.description}</div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Execution Logs */}
+                                    {execution.execution_logs && Array.isArray(execution.execution_logs) && execution.execution_logs.length > 0 && (
+                                      <div className="text-xs">
+                                        <span className="text-tertiary block mb-1">Execution Logs:</span>
+                                        <div 
+                                          className="p-2 rounded font-mono text-xs max-h-32 overflow-y-auto"
+                                          style={{ backgroundColor: 'rgba(107, 114, 128, 0.05)', color: 'rgb(var(--text-secondary))' }}
+                                        >
+                                          {execution.execution_logs.map((log: any, idx: number) => (
+                                            <div key={idx} className="py-0.5">
+                                              {typeof log === 'string' ? log : `${log.command} (${log.duration_ms}ms) - ${log.status}`}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Verification */}
+                                    {execution.verification_checks && Array.isArray(execution.verification_checks) && execution.verification_checks.length > 0 && (
+                                      <div className="text-xs">
+                                        <span className="text-tertiary block mb-1">Verification:</span>
+                                        <div className="space-y-1">
+                                          {execution.verification_checks.map((check: any, idx: number) => (
+                                            <div 
+                                              key={idx}
+                                              className="flex items-start gap-2 p-2 rounded"
+                                              style={{ backgroundColor: 'rgba(34, 197, 94, 0.05)' }}
+                                            >
+                                              <span>{check.passed ? '✅' : '❌'}</span>
+                                              <div className="flex-1">
+                                                <div className="font-medium text-secondary">{check.name}</div>
+                                                {check.message && (
+                                                  <div className="text-tertiary text-xs mt-0.5">{check.message}</div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Timing */}
+                                    {execution.completed_at && (
+                                      <div className="text-xs text-tertiary pt-2" style={{ borderTop: `1px solid rgb(var(--border-color))` }}>
+                                        Completed: {new Date(execution.completed_at).toLocaleString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="text-xs">
+                                  <span className="text-tertiary">Status: </span>
+                                  <span className="font-medium text-green-600">Completed & Verified</span>
+                                </div>
+                                {incident.affectedSystems && incident.affectedSystems.length > 0 && (
+                                  <div className="text-xs">
+                                    <span className="text-tertiary">Target Systems: </span>
+                                    <span className="font-medium text-secondary">{incident.affectedSystems.join(', ')}</span>
+                                  </div>
+                                )}
+                                {incident.remediationMode && (
+                                  <div className="text-xs">
+                                    <span className="text-tertiary">Remediation Mode: </span>
+                                    <span className="font-medium text-secondary capitalize">{incident.remediationMode}</span>
+                                  </div>
+                                )}
+                                <div className="text-xs text-secondary pt-1" style={{ borderTop: `1px solid rgb(var(--border-color))` }}>
+                                  This incident was automatically resolved by the AI agent through automated remediation actions.
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 

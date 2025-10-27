@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Incident } from '../types';
 import { triggerSuggestedFix, updateIncidentNotes } from '../services/api';
+import AgentWorkflow from './AgentWorkflow';
 
 interface IncidentModalProps {
   incident: Incident;
@@ -44,6 +45,8 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
   const [hasUnsavedNotes, setHasUnsavedNotes] = useState(false);
+  const [isDiagnosisExpanded, setIsDiagnosisExpanded] = useState(false);
+  const [isSolutionExpanded, setIsSolutionExpanded] = useState(false);
 
   // Get available status options (exclude current status, add Resolved for Fixing)
   const getAvailableStatuses = () => {
@@ -181,24 +184,62 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
       onClick={onClose}
     >
       <div 
         className="rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden"
-        style={{ backgroundColor: `rgb(var(--bg-secondary))` }}
+        style={{ backgroundColor: `rgb(var(--card-bg))` }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-6 py-4 flex items-start justify-between" style={{ 
-          backgroundColor: `rgb(var(--bg-tertiary))`,
+          backgroundColor: `rgb(var(--bg-secondary))`,
           borderBottom: `1px solid rgb(var(--border-color))`
         }}>
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
               <span className="text-sm font-medium text-secondary">{incident.incidentNumber}</span>
               {severity && (
                 <span className={`px-2 py-1 rounded text-xs font-medium ${severity.color}`}>
                   {severity.label}
+                </span>
+              )}
+              {/* Agent classification badges - full labels */}
+              {incident.actionable && incident.incidentType === 'real_system' && (
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ backgroundColor: 'rgb(34, 197, 94)', color: 'white' }}
+                >
+                  <span>🤖</span>
+                  <span>Agent Ready</span>
+                </span>
+              )}
+              {incident.incidentType === 'synthetic' && (
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ backgroundColor: 'rgb(168, 85, 247)', color: 'white' }}
+                >
+                  <span>📝</span>
+                  <span>Synthetic</span>
+                </span>
+              )}
+              {incident.incidentType === 'training' && (
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ backgroundColor: 'rgb(59, 130, 246)', color: 'white' }}
+                >
+                  <span>🎓</span>
+                  <span>Training</span>
+                </span>
+              )}
+              {incident.remediationMode === 'manual' && (
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ backgroundColor: 'rgb(234, 88, 12)', color: 'white' }}
+                >
+                  <span>👤</span>
+                  <span>Manual Only</span>
                 </span>
               )}
               <span className="text-sm text-tertiary">•</span>
@@ -217,134 +258,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
         {/* Content */}
         <div className="px-6 py-6 overflow-hidden" style={{ height: 'calc(90vh - 240px)' }}>
           <div className="grid grid-cols-2 gap-6 h-full overflow-hidden">
-            {/* Left Column */}
-            <div className="flex flex-col gap-4 min-h-0">
-              {/* Affected Services */}
-              {incident.affectedServices && incident.affectedServices.length > 0 && (
-                <div className="flex items-center gap-3 shrink-0">
-                  <h3 className="text-sm font-semibold text-primary whitespace-nowrap">Affected Services:</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {incident.affectedServices.map((service, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-0.5 rounded text-xs"
-                        style={{ backgroundColor: 'rgb(249, 115, 22)', color: 'white' }}
-                      >
-                        {service}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex-1 min-h-0">
-                <div className="diagnosis-box rounded-lg py-4 pr-4 pl-3 h-full overflow-hidden">
-                  <div className="flex items-start gap-3 h-full">
-                    <svg className="w-5 h-5 text-green-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="flex-1 min-w-0 h-full flex flex-col">
-                      <div className="flex items-center gap-2 mb-2 shrink-0">
-                        <h3 className="diagnosis-title text-sm font-semibold">AI Diagnosis</h3>
-                        {incident.diagnosisProvider && incident.diagnosisProvider !== 'unknown' && incident.diagnosisProvider !== 'error' && (
-                          <span 
-                            className="text-[10px] pl-1.5 pr-2 py-0.5 rounded font-semibold"
-                            style={{ backgroundColor: 'rgb(var(--bg-tertiary))', color: 'white' }}
-                            title={`Generated by ${incident.diagnosisProvider === 'gemini' ? 'Gemini AI' : 'Groq AI'}`}
-                          >
-                            {incident.diagnosisProvider === 'gemini' ? '✨ Gemini' : '⚡ Groq'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex-1 overflow-y-scroll pr-2 min-h-0" style={{ 
-                        scrollbarWidth: 'thin',
-                        scrollbarColor: 'rgb(var(--border-color)) transparent'
-                      }}>
-                        {incident.description ? (
-                          <FormattedText text={incident.description} className="diagnosis-text text-sm leading-relaxed" />
-                        ) : (
-                          <p className="diagnosis-text text-sm leading-relaxed">Awaiting AI diagnosis...</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* AI Solution Section */}
-              <div className="flex-1 min-h-0">
-                {incident.hasSolution && incident.solution ? (
-                  <div className="solution-box rounded-lg py-4 pr-4 pl-3 h-full overflow-hidden">
-                    <div className="flex items-start gap-3 h-full">
-                      <svg className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                      <div className="flex-1 min-w-0 h-full flex flex-col">
-                        <div className="flex items-center gap-2 mb-2 shrink-0">
-                          <h4 className="solution-title text-sm font-semibold">Suggested Solution</h4>
-                          {incident.solutionProvider && incident.solutionProvider !== 'unknown' && incident.solutionProvider !== 'error' && (
-                            <span 
-                              className="text-[10px] pl-1.5 pr-2 py-0.5 rounded font-semibold"
-                              style={{ backgroundColor: 'rgb(var(--bg-tertiary))', color: 'white' }}
-                              title={`Generated by ${incident.solutionProvider === 'gemini' ? 'Gemini AI' : 'Groq AI'}`}
-                            >
-                              {incident.solutionProvider === 'gemini' ? '✨ Gemini' : '⚡ Groq'}
-                            </span>
-                          )}
-                          {incident.confidence !== undefined && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold border" style={{ borderColor: 'rgb(249, 115, 22)', color: 'rgb(249, 115, 22)', backgroundColor: 'transparent' }}>
-                              {(incident.confidence * 100).toFixed(0)}% confidence
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex-1 overflow-y-scroll pr-2 min-h-0" style={{ 
-                          scrollbarWidth: 'thin',
-                          scrollbarColor: 'rgb(var(--border-color)) transparent'
-                        }}>
-                          <FormattedText text={incident.solution} className="solution-text text-sm leading-relaxed" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : incident.hasDiagnosis && !isGettingSolution ? (
-                  <div>
-                    <button
-                      onClick={handleGetSolution}
-                      className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                      Get AI Solution
-                    </button>
-                    {solutionError && (
-                      <div className="mt-3 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
-                        <div className="flex items-start gap-2">
-                          <svg className="w-4 h-4 text-red-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <p className="text-sm text-red-600">{solutionError}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : isGettingSolution ? (
-                  <div className="flex items-center justify-center py-6">
-                    <svg className="animate-spin h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span className="ml-3 text-sm text-secondary">Getting AI solution...</span>
-                  </div>
-                ) : (
-                  <p className="text-sm text-tertiary text-center py-4">
-                    AI diagnosis needed before generating solution
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Right Column */}
+            {/* Left Column - Info */}
             <div className="flex flex-col gap-4 min-h-0 overflow-y-auto" style={{
               scrollbarWidth: 'thin',
               scrollbarColor: 'rgb(var(--border-color)) transparent'
@@ -370,55 +284,37 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-secondary">Assignee</span>
-                  <span className="text-sm font-medium text-primary">
-                    {incident.assignee || 'Unassigned'}
+                  <span className="text-sm text-secondary">Severity</span>
+                  <span className="text-sm font-medium text-primary flex items-center gap-1">
+                    {severity && severity.label}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-secondary">Created</span>
-                  <span className="text-sm font-medium text-primary">
-                    {incident.createdAt || 'Unknown'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-secondary">Last Update</span>
-                  <span className="text-sm font-medium text-primary">
-                    {incident.lastUpdate || 'No updates'}
-                  </span>
+                  <span className="text-sm text-secondary">Generated By</span>
+                  <span className="text-sm font-medium text-primary">{incident.generated_by || 'manual'}</span>
                 </div>
               </div>
 
+              {/* Status Timeline */}
               <div>
-                <h3 className="text-sm font-semibold mb-2 text-primary">Timeline</h3>
-                <div className="space-y-3 max-h-40 overflow-y-auto pr-2" style={{ 
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: 'rgb(var(--border-color)) transparent'
+                <h3 className="text-sm font-semibold mb-2 text-primary">Status Timeline</h3>
+                <div className="rounded-lg p-4" style={{ 
+                  backgroundColor: `rgb(var(--bg-tertiary))`,
+                  borderColor: `rgb(var(--border-color))`,
+                  border: `1px solid rgb(var(--border-color))`
                 }}>
-                  {/* Timeline with vertical line */}
-                  <div className="relative">
-                    {/* Vertical connecting line */}
+                  <div className="space-y-3 relative">
                     <div 
-                      className="absolute left-1 top-2 bottom-2 w-px" 
-                      style={{ backgroundColor: `rgb(var(--border-color))` }}
+                      className="absolute left-[3px] top-2 bottom-2 w-[2px]"
+                      style={{ backgroundColor: 'rgb(var(--border-color))' }}
                     ></div>
-                    
-                    <div className="space-y-3">
-                      {/* Incident Created */}
-                      <div className="flex gap-3 relative">
-                        <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 relative z-10" style={{ backgroundColor: '#3B82F6' }}></div>
-                        <div>
-                          <p className="text-sm font-medium text-primary">Incident created</p>
-                          <p className="text-xs text-secondary">{incident.createdAt || 'Unknown'}</p>
-                        </div>
-                      </div>
-
-                      {/* Status History - shows all status changes */}
-                      {incident.statusHistory && incident.statusHistory.length > 0 && 
-                        incident.statusHistory.map((entry, index) => {
-                          const isCurrentStatus = index === incident.statusHistory!.length - 1;
+                    {incident.statusHistory && incident.statusHistory.length > 0 ? (
+                      incident.statusHistory
+                        .slice()
+                        .reverse()
+                        .map((entry, index) => {
+                          const isCurrentStatus = index === 0;
                           return (
                             <div key={index} className="flex gap-3 relative">
                               <div 
@@ -438,8 +334,9 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                             </div>
                           );
                         })
-                      }
-                    </div>
+                    ) : (
+                      <p className="text-sm text-secondary">No status history available</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -487,12 +384,15 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                           </svg>
-                          Save Notes
+                          {hasUnsavedNotes ? 'Save Notes' : 'Saved'}
                         </>
                       )}
                     </button>
                     {notesSaved && (
-                      <span className="text-sm flex items-center gap-1" style={{ color: 'rgb(34, 197, 94)' }}>
+                      <span 
+                        className="text-xs flex items-center gap-1 transition-opacity"
+                        style={{ color: 'rgb(34, 197, 94)' }}
+                      >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
@@ -502,6 +402,190 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Right Column - Diagnosis, Solution, Agent */}
+            <div className="flex flex-col gap-4 min-h-0 overflow-y-auto" style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: 'rgb(var(--border-color)) transparent'
+            }}>
+              {/* Affected Services */}
+              {incident.affectedServices && incident.affectedServices.length > 0 && (
+                <div className="flex items-center gap-3 shrink-0">
+                  <h3 className="text-sm font-semibold text-primary whitespace-nowrap">Affected Services:</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {incident.affectedServices.map((service, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2 py-0.5 rounded text-xs"
+                        style={{ backgroundColor: 'rgb(249, 115, 22)', color: 'white' }}
+                      >
+                        {service}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Diagnosis Section - Collapsible */}
+              <div className="shrink-0">
+                <div className="diagnosis-box rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setIsDiagnosisExpanded(!isDiagnosisExpanded)}
+                    className="w-full py-3 pr-4 pl-3 flex items-center gap-3 hover:opacity-90 transition-opacity"
+                  >
+                    <svg className="w-5 h-5 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <h3 className="diagnosis-title text-sm font-semibold">AI Diagnosis</h3>
+                        {incident.diagnosisProvider && incident.diagnosisProvider !== 'unknown' && incident.diagnosisProvider !== 'error' && (
+                          <span 
+                            className="text-[10px] pl-1.5 pr-2 py-0.5 rounded font-semibold"
+                            style={{ backgroundColor: 'rgb(var(--bg-tertiary))', color: 'white' }}
+                            title={`Generated by ${incident.diagnosisProvider === 'gemini' ? 'Gemini AI' : 'Groq AI'}`}
+                          >
+                            {incident.diagnosisProvider === 'gemini' ? '✨ Gemini' : '⚡ Groq'}
+                          </span>
+                        )}
+                      </div>
+                      <svg 
+                        className={`w-4 h-4 transition-transform ${isDiagnosisExpanded ? 'rotate-180' : ''}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+                  {isDiagnosisExpanded && (
+                    <div className="px-3 pb-4 pr-4 pl-11">
+                      <div className="overflow-y-auto max-h-64 pr-2" style={{ 
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: 'rgb(var(--border-color)) transparent'
+                      }}>
+                        {incident.description ? (
+                          <FormattedText text={incident.description} className="diagnosis-text text-sm leading-relaxed" />
+                        ) : (
+                          <p className="diagnosis-text text-sm leading-relaxed">Awaiting AI diagnosis...</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Solution Section - Collapsible */}
+              <div className="shrink-0">
+                {incident.hasSolution && incident.solution ? (
+                  <div className="solution-box rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => setIsSolutionExpanded(!isSolutionExpanded)}
+                      className="w-full py-3 pr-4 pl-3 flex items-center gap-3 hover:opacity-90 transition-opacity"
+                    >
+                      <svg className="w-5 h-5 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      <div className="flex-1 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <h4 className="solution-title text-sm font-semibold">Suggested Solution</h4>
+                          {incident.solutionProvider && incident.solutionProvider !== 'unknown' && incident.solutionProvider !== 'error' && (
+                            <span 
+                              className="text-[10px] pl-1.5 pr-2 py-0.5 rounded font-semibold"
+                              style={{ backgroundColor: 'rgb(var(--bg-tertiary))', color: 'white' }}
+                              title={`Generated by ${incident.solutionProvider === 'gemini' ? 'Gemini AI' : 'Groq AI'}`}
+                            >
+                              {incident.solutionProvider === 'gemini' ? '✨ Gemini' : '⚡ Groq'}
+                            </span>
+                          )}
+                          {incident.confidence !== undefined && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold border" style={{ borderColor: 'rgb(249, 115, 22)', color: 'rgb(249, 115, 22)', backgroundColor: 'transparent' }}>
+                              {(incident.confidence * 100).toFixed(0)}% confidence
+                            </span>
+                          )}
+                        </div>
+                        <svg 
+                          className={`w-4 h-4 transition-transform ${isSolutionExpanded ? 'rotate-180' : ''}`}
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </button>
+                    {isSolutionExpanded && (
+                      <div className="px-3 pb-4 pr-4 pl-11">
+                        <div className="overflow-y-auto max-h-64 pr-2" style={{ 
+                          scrollbarWidth: 'thin',
+                          scrollbarColor: 'rgb(var(--border-color)) transparent'
+                        }}>
+                          <FormattedText text={incident.solution} className="solution-text text-sm leading-relaxed" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : incident.hasDiagnosis && !isGettingSolution ? (
+                  <div>
+                    <button
+                      onClick={handleGetSolution}
+                      className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      Get AI Solution
+                    </button>
+                    {solutionError && (
+                      <div className="mt-3 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-4 h-4 text-red-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <p className="text-sm text-red-600">{solutionError}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : isGettingSolution ? (
+                  <div className="flex items-center justify-center py-6">
+                    <svg className="animate-spin h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="ml-3 text-sm text-secondary">Getting AI solution...</span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-tertiary text-center py-4">
+                    AI diagnosis needed before generating solution
+                  </p>
+                )}
+              </div>
+
+              {/* AI Agent Remediation Section */}
+              {incident.actionable && incident.incidentType === 'real_system' && (
+                <div className="shrink-0">
+                  <div className="flex items-center gap-2 mb-3">
+                    <h3 className="text-sm font-semibold text-primary">AI Agent Remediation</h3>
+                    <span 
+                      className="px-2 py-0.5 rounded text-xs font-medium"
+                      style={{ 
+                        border: '1px solid rgb(34, 197, 94)',
+                        color: 'rgb(34, 197, 94)',
+                        backgroundColor: 'transparent'
+                      }}
+                    >
+                      Automated
+                    </span>
+                  </div>
+                  <AgentWorkflow 
+                    incidentId={incident.id} 
+                    canAgentAct={incident.actionable === true && incident.incidentType === 'real_system'}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

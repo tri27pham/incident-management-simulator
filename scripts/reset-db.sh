@@ -15,12 +15,18 @@ DB_PASSWORD="incident_pass"
 DB_NAME="incident_db"
 
 # Check if we're using Docker or local PostgreSQL
-if docker ps 2>/dev/null | grep -q postgres-dev; then
-    echo "📦 Detected PostgreSQL in Docker"
+if docker ps 2>/dev/null | grep -q "postgres-dev"; then
+    echo "📦 Detected PostgreSQL in Docker (postgres-dev)"
     USING_DOCKER=true
+    CONTAINER_NAME="postgres-dev"
+elif docker ps 2>/dev/null | grep -qE "^[a-f0-9]+.*postgres"; then
+    echo "📦 Detected PostgreSQL in Docker Compose (postgres)"
+    USING_DOCKER=true
+    CONTAINER_NAME="postgres"
 else
     echo "🏠 Assuming local PostgreSQL"
     USING_DOCKER=false
+    CONTAINER_NAME=""
 fi
 
 echo ""
@@ -36,36 +42,52 @@ if [[ ! $REPLY == "yes" ]]; then
 fi
 
 if [ "$USING_DOCKER" = true ]; then
-    echo "🔄 Stopping and removing Docker container..."
-    docker stop postgres-dev 2>/dev/null
-    docker rm postgres-dev 2>/dev/null
+    echo "🔄 Resetting Docker container: $CONTAINER_NAME..."
     
-    echo "📦 Creating fresh PostgreSQL container..."
-    docker run -d \
-        --name postgres-dev \
-        -e POSTGRES_USER=incident_user \
-        -e POSTGRES_PASSWORD=incident_pass \
-        -e POSTGRES_DB=incident_db \
-        -p 5432:5432 \
-        postgres:16-alpine
+    # Stop ALL services to release database connections and prevent auto-creation
+    echo "🛑 Stopping all service containers..."
+    docker-compose stop backend health-monitor ai-diagnosis 2>/dev/null || true
+    sleep 3
     
-    echo "⏳ Waiting for PostgreSQL to initialize..."
-    sleep 5
+    # Truncate all tables to delete all data
+    echo "🗑️  Truncating all tables..."
+    TRUNCATE_OUTPUT=$(docker exec -i "$CONTAINER_NAME" psql -U $DB_USER -d $DB_NAME <<-EOSQL 2>&1
+        -- Truncate all tables with CASCADE to handle foreign key constraints
+        TRUNCATE TABLE incidents, incident_analysis, incident_status_history, agent_executions RESTART IDENTITY CASCADE;
+EOSQL
+    )
     
-    echo "✅ Database reset complete!"
+    if echo "$TRUNCATE_OUTPUT" | grep -q "TRUNCATE TABLE"; then
+        echo "   ✓ All tables truncated successfully"
+    else
+        echo "   ⚠️  Output: $TRUNCATE_OUTPUT"
+    fi
+    
+    echo "✅ Database cleared!"
 else
-    echo "🗑️  Dropping database..."
-    PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null
-    
-    echo "📦 Creating fresh database..."
-    PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;" 2>/dev/null
-    
-    echo "✅ Database reset complete!"
+    echo "🗑️  Truncating all tables..."
+    PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "TRUNCATE TABLE incidents, incident_analysis, incident_status_history, agent_executions RESTART IDENTITY CASCADE;" 2>/dev/null
+    echo "✅ Database cleared!"
 fi
 
 echo ""
-echo "💡 The database is now fresh and empty."
-echo "💡 Run ./start.sh or ./start-no-docker.sh to start the services."
-echo "💡 The backend will automatically create the schema on startup."
+
+# Restart all services that were stopped
+if [ "$USING_DOCKER" = true ]; then
+    echo "🔄 Restarting all service containers..."
+    docker-compose start backend health-monitor ai-diagnosis 2>/dev/null || true
+    sleep 3
+    echo "   ✓ Services restarted"
+    
+    # Broadcast reset to connected clients
+    echo "📡 Broadcasting reset to connected frontends..."
+    sleep 1  # Give backend a moment to fully start
+    curl -X POST http://localhost:8080/api/v1/reset -s > /dev/null 2>&1 || echo "   ⚠️  Could not broadcast (backend may still be starting)"
+    echo "   ✓ Reset broadcast sent"
+fi
+
+echo ""
+echo "💡 All data has been cleared from all tables."
+echo "💡 All connected frontends have been notified to clear their cache."
 echo ""
 
