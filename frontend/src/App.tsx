@@ -820,9 +820,10 @@ function App() {
           reconnectAttempts = 0;
           
           const incident = mapBackendIncidentToFrontend(data);
+          const isResolved = data.status === 'resolved';
           const status = mapBackendStatusToFrontend(data.status);
           
-          console.log(`✨ Processing incident ${incident.incidentNumber} -> ${status}`);
+          console.log(`✨ Processing incident ${incident.incidentNumber} -> ${isResolved ? 'resolved' : status}`);
           
           // Check if this is a redis-test incident (complete progress bar)
           console.log('🔍 Checking incident source:', {
@@ -851,47 +852,89 @@ function App() {
             console.log('🔄 Updated modal incident');
           }
           
-          // Update the board with new/updated incident
-          setBoard((prevBoard) => {
-            const newBoard: IncidentBoardState = {
-              Triage: { ...prevBoard.Triage, items: [...prevBoard.Triage.items] },
-              Investigating: { ...prevBoard.Investigating, items: [...prevBoard.Investigating.items] },
-              Fixing: { ...prevBoard.Fixing, items: [...prevBoard.Fixing.items] },
-            };
+          // If incident is resolved, move it to resolved list
+          if (isResolved) {
+            console.log(`🎉 Incident ${incident.incidentNumber} resolved - moving to resolved panel`);
             
-            // First, find if incident exists anywhere in the board
-            let existingColumnKey: keyof IncidentBoardState | null = null;
-            let existingIndex = -1;
-            
-            for (const columnKey of Object.keys(newBoard) as Array<keyof IncidentBoardState>) {
-              const index = newBoard[columnKey].items.findIndex(i => i.id === incident.id);
-              if (index >= 0) {
-                existingColumnKey = columnKey;
-                existingIndex = index;
-                break;
+            // Remove from board
+            setBoard((prevBoard) => {
+              const newBoard: IncidentBoardState = {
+                Triage: { ...prevBoard.Triage, items: [...prevBoard.Triage.items] },
+                Investigating: { ...prevBoard.Investigating, items: [...prevBoard.Investigating.items] },
+                Fixing: { ...prevBoard.Fixing, items: [...prevBoard.Fixing.items] },
+              };
+              
+              // Find and remove incident from any column
+              for (const columnKey of Object.keys(newBoard) as Array<keyof IncidentBoardState>) {
+                const index = newBoard[columnKey].items.findIndex(i => i.id === incident.id);
+                if (index >= 0) {
+                  newBoard[columnKey].items.splice(index, 1);
+                  console.log(`📦 Removed incident ${incident.incidentNumber} from ${columnKey} column`);
+                  break;
+                }
               }
-            }
+              
+              return newBoard;
+            });
             
-            if (existingColumnKey !== null) {
-              // Incident exists in the board
-              if (existingColumnKey === status) {
-                // Same column - update in place (preserve position)
-                newBoard[status].items[existingIndex] = incident;
-                console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
+            // Add to resolved incidents (at the beginning)
+            setResolvedIncidents((prev) => {
+              // Check if already in resolved list
+              const existingIndex = prev.findIndex(i => i.id === incident.id);
+              if (existingIndex >= 0) {
+                // Update existing
+                const updated = [...prev];
+                updated[existingIndex] = incident;
+                return updated;
               } else {
-                // Different column - remove from old, add to new
-                newBoard[existingColumnKey].items.splice(existingIndex, 1);
-                newBoard[status].items.push(incident);
-                console.log(`📦 Moved incident ${incident.incidentNumber} from ${existingColumnKey} to ${status} column`);
+                // Add new at the beginning
+                return [incident, ...prev];
               }
-            } else {
-              // New incident - add to target column
-              newBoard[status].items.push(incident);
-              console.log(`✅ Added new incident ${incident.incidentNumber} to ${status} column`);
-            }
+            });
             
-            return newBoard;
-          });
+          } else {
+            // Update the board with new/updated incident
+            setBoard((prevBoard) => {
+              const newBoard: IncidentBoardState = {
+                Triage: { ...prevBoard.Triage, items: [...prevBoard.Triage.items] },
+                Investigating: { ...prevBoard.Investigating, items: [...prevBoard.Investigating.items] },
+                Fixing: { ...prevBoard.Fixing, items: [...prevBoard.Fixing.items] },
+              };
+              
+              // First, find if incident exists anywhere in the board
+              let existingColumnKey: keyof IncidentBoardState | null = null;
+              let existingIndex = -1;
+              
+              for (const columnKey of Object.keys(newBoard) as Array<keyof IncidentBoardState>) {
+                const index = newBoard[columnKey].items.findIndex(i => i.id === incident.id);
+                if (index >= 0) {
+                  existingColumnKey = columnKey;
+                  existingIndex = index;
+                  break;
+                }
+              }
+              
+              if (existingColumnKey !== null) {
+                // Incident exists in the board
+                if (existingColumnKey === status) {
+                  // Same column - update in place (preserve position)
+                  newBoard[status].items[existingIndex] = incident;
+                  console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
+                } else {
+                  // Different column - remove from old, add to new
+                  newBoard[existingColumnKey].items.splice(existingIndex, 1);
+                  newBoard[status].items.push(incident);
+                  console.log(`📦 Moved incident ${incident.incidentNumber} from ${existingColumnKey} to ${status} column`);
+                }
+              } else {
+                // New incident - add to target column
+                newBoard[status].items.push(incident);
+                console.log(`✅ Added new incident ${incident.incidentNumber} to ${status} column`);
+              }
+              
+              return newBoard;
+            });
+          }
         });
         
         console.log('✅ WebSocket instance created, setting onclose handler...');

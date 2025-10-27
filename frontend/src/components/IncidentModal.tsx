@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Incident } from '../types';
 import { triggerSuggestedFix, updateIncidentNotes } from '../services/api';
+import AgentWorkflow from './AgentWorkflow';
 
 interface IncidentModalProps {
   incident: Incident;
@@ -539,6 +540,25 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                   </div>
                 </div>
               </div>
+
+              {/* AI Agent Remediation Section */}
+              {incident.actionable && incident.incidentType === 'real_system' && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <h3 className="text-sm font-semibold text-primary">AI Agent Remediation</h3>
+                    <span 
+                      className="px-2 py-0.5 rounded text-xs font-medium"
+                      style={{ backgroundColor: 'rgb(34, 197, 94)', color: 'white' }}
+                    >
+                      🤖 Automated
+                    </span>
+                  </div>
+                  <AgentWorkflow 
+                    incidentId={incident.id} 
+                    canAgentAct={incident.actionable === true && incident.incidentType === 'real_system'}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

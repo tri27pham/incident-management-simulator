@@ -14,6 +14,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       AI_DIAGNOSIS_URL: http://ai-diagnosis:8000
+      HEALTH_MONITOR_URL: http://health-monitor:8002
     ports:
       - "8080:8080"
     networks:
@@ -42,7 +43,10 @@ services:
       - backend
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=http://localhost:8080/api/v1
     container_name: frontend
     depends_on:
       - backend

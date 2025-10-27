@@ -41,10 +41,10 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 echo ""
-echo "🧹 Deleting all incidents and analyses..."
+echo "🧹 Deleting all incidents, analyses, and agent executions..."
 
-# Truncate tables
-PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "TRUNCATE incidents, incident_analysis RESTART IDENTITY CASCADE;" 2>/dev/null
+# Truncate tables (CASCADE will also clear status_history and other related tables)
+PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "TRUNCATE incidents, incident_analysis, agent_executions RESTART IDENTITY CASCADE;" 2>/dev/null
 
 if [ $? -eq 0 ]; then
     echo "✅ Database cleared successfully!"

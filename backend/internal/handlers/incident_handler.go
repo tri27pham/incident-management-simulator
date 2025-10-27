@@ -57,9 +57,9 @@ func CreateIncidentHandler(c *gin.Context) {
 		return
 	}
 
-	// Initialize metadata if nil to prevent NULL insertion
-	if incident.Metadata == nil {
-		incident.Metadata = models.JSONB{}
+	// Initialize metadata if empty to prevent NULL insertion
+	if incident.Metadata.Data == nil {
+		incident.Metadata = models.JSONB{Data: map[string]interface{}{}}
 	}
 
 	// Ensure AffectedSystems is not nil

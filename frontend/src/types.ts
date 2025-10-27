@@ -39,6 +39,73 @@ export interface Incident {
   affectedSystems?: string[];
   remediationMode?: 'automated' | 'manual' | 'advisory';
   metadata?: Record<string, any>;
+  // Agent execution data
+  agentExecutions?: AgentExecution[];
+}
+
+export type AgentExecutionStatus = 
+  | 'thinking' 
+  | 'previewing' 
+  | 'awaiting_approval' 
+  | 'executing' 
+  | 'verifying' 
+  | 'completed' 
+  | 'failed';
+
+export interface AgentCommand {
+  name: string;
+  command: string;
+  args: string[];
+  target: string;
+  description: string;
+}
+
+export interface AgentRisk {
+  level: string;
+  description: string;
+  mitigation: string;
+}
+
+export interface ExecutionLog {
+  timestamp: string;
+  command: string;
+  status: string;
+  output: string;
+  error_detail?: string;
+  duration_ms: number;
+}
+
+export interface VerificationCheck {
+  check_name: string;
+  description: string;
+  passed: boolean;
+  result: string;
+  expected: string;
+}
+
+export interface AgentExecution {
+  id: string;
+  incident_id: string;
+  status: AgentExecutionStatus;
+  agent_model: string;
+  analysis?: string;
+  recommended_action?: string;
+  reasoning?: string;
+  commands?: AgentCommand[];
+  risks?: AgentRisk[];
+  estimated_impact?: string;
+  execution_logs?: ExecutionLog[];
+  verification_checks?: VerificationCheck[];
+  verification_passed?: boolean;
+  verification_notes?: string;
+  success?: boolean;
+  error_message?: string;
+  rollback_performed?: boolean;
+  dry_run: boolean;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export type IncidentBoardState = {

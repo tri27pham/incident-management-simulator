@@ -378,3 +378,63 @@ def generate_incident():
 @app.get("/api/v1/health")
 def health_check():
     return {"status": "ok"}
+
+# --- Agent Thinking Endpoint ---
+class AgentThinkRequest(BaseModel):
+    prompt: str
+
+class AgentThinkResponse(BaseModel):
+    response: str
+    provider: str = "unknown"
+
+@app.post("/api/v1/agent-think", response_model=AgentThinkResponse)
+def agent_think(req: AgentThinkRequest):
+    """
+    AI agent thinking phase - analyze incident and recommend action.
+    """
+    try:
+        # Try Groq first
+        if groq_client:
+            try:
+                completion = groq_client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": req.prompt}],
+                    temperature=0.3,
+                    max_tokens=1000
+                )
+                response_text = completion.choices[0].message.content.strip()
+                cleaned = clean_json_string(response_text)
+                return AgentThinkResponse(response=cleaned, provider="groq")
+            except Exception as e:
+                print(f"Groq failed in agent-think: {e}")
+                pass
+        
+        # Fallback to Gemini
+        if gemini_client:
+            try:
+                response = gemini_client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=req.prompt,
+                    config={"temperature": 0.3}
+                )
+                response_text = response.text.strip()
+                cleaned = clean_json_string(response_text)
+                return AgentThinkResponse(response=cleaned, provider="gemini")
+            except Exception as e:
+                print(f"Gemini failed in agent-think: {e}")
+                return AgentThinkResponse(
+                    response='{"error": "AI service unavailable"}',
+                    provider="error"
+                )
+        
+        return AgentThinkResponse(
+            response='{"error": "No AI service configured"}',
+            provider="error"
+        )
+    
+    except Exception as e:
+        print(f"Agent think error: {e}")
+        return AgentThinkResponse(
+            response='{"error": "Request failed"}',
+            provider="error"
+        )

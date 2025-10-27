@@ -251,3 +251,57 @@ export function connectWebSocket(onMessage: (data: IncidentWithAnalysis) => void
   return ws;
 }
 
+// --- AI Agent Remediation API ---
+
+export interface AgentExecutionResponse {
+  id: string;
+  incident_id: string;
+  status: string;
+  agent_model: string;
+  analysis?: string;
+  recommended_action?: string;
+  reasoning?: string;
+  commands?: any;
+  risks?: any;
+  estimated_impact?: string;
+  execution_logs?: any;
+  verification_checks?: any;
+  verification_passed?: boolean;
+  verification_notes?: string;
+  success?: boolean;
+  error_message?: string;
+  rollback_performed?: boolean;
+  dry_run: boolean;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function startAgentRemediation(incidentId: string): Promise<AgentExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/incidents/${incidentId}/agent/remediate`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to start agent remediation');
+  }
+  return response.json();
+}
+
+export async function getAgentExecution(executionId: string): Promise<AgentExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/executions/${executionId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch agent execution');
+  }
+  return response.json();
+}
+
+export async function getIncidentAgentExecutions(incidentId: string): Promise<AgentExecutionResponse[]> {
+  const response = await fetch(`${API_BASE_URL}/incidents/${incidentId}/agent/executions`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch agent executions');
+  }
+  return response.json();
+}
+

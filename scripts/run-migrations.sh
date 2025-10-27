@@ -50,7 +50,7 @@ fi
 echo "🗄️  Running migrations..."
 echo ""
 
-MIGRATION_DIR="$(dirname "$0")/backend/migrations"
+MIGRATION_DIR="$(dirname "$0")/../backend/migrations"
 MIGRATION_COUNT=0
 FAILED_COUNT=0
 

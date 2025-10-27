@@ -47,6 +47,11 @@ func SetupRouter() *gin.Engine {
 		api.DELETE("/incidents/:id", handlers.DeleteIncidentHandler)
 		api.POST("/incidents/:id/diagnose", handlers.TriggerAIDiagnosisHandler)
 		api.POST("/incidents/:id/suggest-fix", handlers.TriggerAISuggestedFixHandler)
+
+		// AI Agent routes
+		api.POST("/incidents/:id/agent/remediate", handlers.StartAgentRemediationHandler)
+		api.GET("/incidents/:id/agent/executions", handlers.GetIncidentAgentExecutionsHandler)
+		api.GET("/agent/executions/:executionId", handlers.GetAgentExecutionHandler)
 	}
 
 	return r
