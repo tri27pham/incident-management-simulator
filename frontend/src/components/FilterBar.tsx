@@ -52,6 +52,25 @@ export function FilterBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Update dropdown positions on scroll
+  useEffect(() => {
+    function updatePositions() {
+      if (severityOpen && severityRef.current) {
+        const rect = severityRef.current.getBoundingClientRect();
+        setSeverityPosition({ top: rect.bottom + 4, left: rect.left });
+      }
+      if (teamOpen && teamRef.current) {
+        const rect = teamRef.current.getBoundingClientRect();
+        setTeamPosition({ top: rect.bottom + 4, left: rect.left });
+      }
+    }
+    
+    if (severityOpen || teamOpen) {
+      window.addEventListener('scroll', updatePositions, true);
+      return () => window.removeEventListener('scroll', updatePositions, true);
+    }
+  }, [severityOpen, teamOpen]);
+
   const getSeverityLabel = () => {
     if (selectedSeverities.length === 0) return 'Severity';
     if (selectedSeverities.length === 1) {
@@ -86,16 +105,16 @@ export function FilterBar({
             }
             setSeverityOpen(!severityOpen);
           }}
-          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors ${
-            selectedSeverities.length > 0
-              ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : ''
-          }`}
-          style={selectedSeverities.length === 0 ? {
+          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors"
+          style={selectedSeverities.length > 0 ? {
+            backgroundColor: 'rgba(255, 140, 0, 0.15)',
+            borderColor: 'rgb(255, 140, 0)',
+            color: 'rgb(255, 140, 0)'
+          } : {
             backgroundColor: `rgb(var(--card-bg))`,
             borderColor: `rgb(var(--border-color))`,
             color: `rgb(var(--text-primary))`
-          } : {}}
+          }}
         >
           {getSeverityLabel()}
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -161,16 +180,16 @@ export function FilterBar({
             }
             setTeamOpen(!teamOpen);
           }}
-          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors ${
-            selectedTeams.length > 0
-              ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : ''
-          }`}
-          style={selectedTeams.length === 0 ? {
+          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors"
+          style={selectedTeams.length > 0 ? {
+            backgroundColor: 'rgba(255, 140, 0, 0.15)',
+            borderColor: 'rgb(255, 140, 0)',
+            color: 'rgb(255, 140, 0)'
+          } : {
             backgroundColor: `rgb(var(--card-bg))`,
             borderColor: `rgb(var(--border-color))`,
             color: `rgb(var(--text-primary))`
-          } : {}}
+          }}
         >
           {getTeamLabel()}
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

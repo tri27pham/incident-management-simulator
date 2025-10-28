@@ -1831,7 +1831,7 @@ function App() {
         <section className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-semibold text-primary">Systems Health</h2>
+              <h2 className="text-xl font-medium text-primary">Systems Health</h2>
               <p className="text-sm text-secondary">Real-time status of monitored services</p>
             </div>
           </div>
@@ -2193,8 +2193,8 @@ function App() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-baseline gap-2">
-              <h2 className="text-2xl font-semibold text-primary">Active incidents</h2>
-              <span className="text-sm text-secondary font-medium">
+              <h2 className="text-xl font-medium text-primary">Active incidents</h2>
+              <span className="text-sm font-medium text-primary">
                 {totalIncidents}
               </span>
             </div>
@@ -2202,27 +2202,27 @@ function App() {
               <button 
                 onClick={() => setShowResolvedPanel(true)}
                 disabled={isFixingAll}
-                className="text-sm flex items-center gap-1 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-sm flex items-center gap-2 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg border transition-all duration-500 ease-in-out font-medium"
                 style={{
-                  color: `rgb(var(--text-secondary))`
+                  borderColor: `rgb(var(--border-color))`,
+                  color: `rgb(var(--text-primary))`
                 }}
                 onMouseEnter={(e) => {
                   if (!isFixingAll) {
-                    e.currentTarget.style.color = 'rgb(249, 115, 22)';
+                    e.currentTarget.style.borderColor = 'rgb(255, 140, 0)';
+                    e.currentTarget.style.color = 'rgb(255, 140, 0)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (!isFixingAll) {
-                    e.currentTarget.style.color = `rgb(var(--text-secondary))`;
-                  }
+                  e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+                  e.currentTarget.style.color = `rgb(var(--text-primary))`;
                 }}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ transition: 'none' }}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 View Resolved ({resolvedIncidents.length})
               </button>
-              <button className="text-sm text-secondary hover:text-primary transition-colors">View all</button>
             </div>
           </div>
 
