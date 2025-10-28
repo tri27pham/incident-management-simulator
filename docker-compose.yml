@@ -80,12 +80,27 @@ services:
     networks:
       - incident-net
 
+  # Mock PostgreSQL service for agent testing
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: postgres-test
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: testdb
+    command: postgres -c max_connections=20 -c shared_buffers=64MB
+    ports:
+      - "5433:5432"
+    networks:
+      - incident-net
+
   # Health monitor service
   health-monitor:
     build: ./health-monitor
     container_name: health-monitor
     depends_on:
       - redis-test
+      - postgres-test
       - backend
     environment:
       - BACKEND_URL=http://backend:8080
@@ -95,6 +110,8 @@ services:
       - "8002:8002"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    tmpfs:
+      - /var/log:size=2G  # Small 2GB tmpfs volume for fast disk testing
     networks:
       - incident-net
 

@@ -3,6 +3,9 @@ import time
 import requests
 import json
 import docker
+import psycopg2
+import shutil
+import subprocess
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -90,10 +93,10 @@ def check_redis_health():
                 if len(reported_incidents) > 10:
                     reported_incidents.clear()
         else:
-            # Service is healthy, clear any reported incidents to allow new ones
+            # Service is healthy, clear reported incident for this service to allow new ones
             if "redis-test" in reported_incidents:
                 print(f"✅ Redis is now healthy - clearing incident tracker")
-            reported_incidents.clear()
+                reported_incidents.discard("redis-test")
         
         return health
         
@@ -147,6 +150,292 @@ def create_incident(message, source, error_logs, metrics):
     except Exception as e:
         print(f"❌ Error creating incident: {e}")
 
+def check_postgres_health():
+    """Check PostgreSQL idle connections and health"""
+    try:
+        # Connect to postgres-test
+        conn = psycopg2.connect(
+            host="postgres-test",
+            port=5432,
+            database="testdb",
+            user="testuser",
+            password="testpass",
+            connect_timeout=5
+        )
+        cursor = conn.cursor()
+        
+        # Get connection statistics
+        cursor.execute("""
+            SELECT 
+                count(*) FILTER (WHERE state = 'idle') as idle_connections,
+                count(*) FILTER (WHERE state = 'active') as active_connections,
+                count(*) as total_connections,
+                (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') as max_connections
+            FROM pg_stat_activity
+            WHERE pid <> pg_backend_pid()
+        """)
+        
+        row = cursor.fetchone()
+        idle_connections = row[0]
+        active_connections = row[1]
+        total_connections = row[2]
+        max_connections = row[3]
+        
+        cursor.close()
+        conn.close()
+        
+        # Calculate health based on idle connection ratio
+        # If we have many idle connections (>80% of total), it's unhealthy
+        idle_ratio = (idle_connections / max(total_connections, 1)) * 100
+        
+        # Health degrades as idle connections pile up
+        if idle_connections > 15:  # Critical
+            health = 0
+        elif idle_connections > 12:  # Very bad
+            health = 30
+        elif idle_connections > 10:  # Bad
+            health = 50
+        elif idle_connections > 8:  # Degraded
+            health = 70
+        else:
+            health = 100
+        
+        metrics = {
+            "idle_connections": idle_connections,
+            "active_connections": active_connections,
+            "total_connections": total_connections,
+            "max_connections": max_connections,
+            "idle_ratio": round(idle_ratio, 2),
+            "health": health,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        print(f"🔍 PostgreSQL health: {health}% (Idle: {idle_connections}, Active: {active_connections}, Total: {total_connections}/{max_connections})")
+        
+        # Check if unhealthy
+        if health < HEALTH_THRESHOLD:
+            incident_key = "postgres-test"
+            
+            # Only create incident if we haven't reported this issue recently
+            if incident_key not in reported_incidents:
+                error_logs = [
+                    f"Idle connections: {idle_connections} ({idle_ratio:.1f}% of total)",
+                    f"Total connections: {total_connections}/{max_connections}",
+                    "Connection pool exhausted with idle connections"
+                ]
+                
+                create_incident(
+                    message=f"PostgreSQL connection pool exhausted - Health: {health}%",
+                    source="postgres-test",
+                    error_logs=error_logs,
+                    metrics=metrics
+                )
+                
+                reported_incidents.add(incident_key)
+                print(f"🚨 Incident created for {incident_key} (will not create another until healthy)")
+                
+                # Clear old entries (keep last 10)
+                if len(reported_incidents) > 10:
+                    reported_incidents.clear()
+        else:
+            # Service is healthy, clear any reported incidents to allow new ones
+            if "postgres-test" in reported_incidents:
+                print(f"✅ PostgreSQL is now healthy - clearing incident tracker")
+                reported_incidents.discard("postgres-test")
+        
+        return health
+        
+    except psycopg2.OperationalError as e:
+        print(f"⚠️  PostgreSQL connection failed: {e}")
+        return None
+    except Exception as e:
+        print(f"❌ Error checking PostgreSQL health: {e}")
+        return None
+
+def check_postgres_bloat():
+    """Check PostgreSQL table bloat (dead tuples needing vacuum)"""
+    try:
+        conn = psycopg2.connect(
+            host="postgres-test",
+            port=5432,
+            database="testdb",
+            user="testuser",
+            password="testpass",
+            connect_timeout=5
+        )
+        cursor = conn.cursor()
+        
+        # Get bloat statistics - check for tables with high dead tuple ratio
+        cursor.execute("""
+            SELECT 
+                schemaname,
+                relname as table_name,
+                n_dead_tup,
+                n_live_tup,
+                CASE 
+                    WHEN n_live_tup > 0 THEN (n_dead_tup::float / n_live_tup) * 100 
+                    ELSE 0 
+                END as dead_tuple_ratio,
+                last_vacuum,
+                last_autovacuum
+            FROM pg_stat_user_tables
+            WHERE n_dead_tup > 0
+            ORDER BY n_dead_tup DESC
+            LIMIT 1
+        """)
+        
+        row = cursor.fetchone()
+        
+        if row:
+            schema, table_name, dead_tup, live_tup, dead_ratio, last_vacuum, last_autovacuum = row
+            
+            # Calculate health based on dead tuple ratio
+            # 0-20% dead = 100% health (excellent)
+            # 20-40% dead = 70% health (ok)
+            # 40-60% dead = 40% health (degraded)
+            # 60%+ dead = 0% health (critical)
+            if dead_ratio < 20:
+                health = 100
+            elif dead_ratio < 40:
+                health = 70
+            elif dead_ratio < 60:
+                health = 40
+            else:
+                health = 0
+            
+            metrics = {
+                "table_name": table_name,
+                "dead_tuples": dead_tup,
+                "live_tuples": live_tup,
+                "dead_ratio": round(dead_ratio, 2),
+                "last_vacuum": str(last_vacuum) if last_vacuum else "never",
+                "last_autovacuum": str(last_autovacuum) if last_autovacuum else "never",
+                "health": health,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            cursor.close()
+            conn.close()
+            
+            print(f"🔍 PostgreSQL bloat: {health}% (Table: {table_name}, Dead: {dead_tup}, Live: {live_tup}, Ratio: {dead_ratio:.1f}%)")
+            
+            # Check if unhealthy
+            if health < HEALTH_THRESHOLD:
+                incident_key = "postgres-test-bloat"
+                
+                if incident_key not in reported_incidents:
+                    error_logs = [
+                        f"Table '{table_name}' has {dead_tup} dead tuples ({dead_ratio:.1f}% of total)",
+                        f"Live tuples: {live_tup}",
+                        f"Last vacuum: {metrics['last_vacuum']}",
+                        "Table bloat requires VACUUM to reclaim space and improve performance"
+                    ]
+                    
+                    create_incident(
+                        message=f"PostgreSQL table bloat detected - Health: {health}%",
+                        source="postgres-test",
+                        error_logs=error_logs,
+                        metrics=metrics
+                    )
+                    
+                    reported_incidents.add(incident_key)
+                    print(f"🚨 Incident created for {incident_key} (will not create another until healthy)")
+                    
+                    if len(reported_incidents) > 10:
+                        reported_incidents.clear()
+            else:
+                if "postgres-test-bloat" in reported_incidents:
+                    print(f"✅ PostgreSQL bloat resolved - clearing incident tracker")
+                    reported_incidents.discard("postgres-test-bloat")
+            
+            return health
+        else:
+            # No tables with dead tuples
+            if "postgres-test-bloat" in reported_incidents:
+                reported_incidents.discard("postgres-test-bloat")
+            return 100
+        
+    except psycopg2.OperationalError as e:
+        print(f"⚠️  PostgreSQL connection failed: {e}")
+        return None
+    except Exception as e:
+        print(f"❌ Error checking PostgreSQL bloat: {e}")
+        return None
+
+def check_disk_health():
+    """Check disk space usage on /var/log directory"""
+    try:
+        # Get disk usage statistics
+        usage = shutil.disk_usage("/var/log")
+        
+        # Calculate disk usage percentage
+        total = usage.total
+        used = usage.used
+        free = usage.free
+        used_percent = (used / total) * 100
+        
+        # Calculate health based on disk usage (inverse of usage)
+        # 0-60% usage = 100% health
+        # 60-70% usage = 70% health
+        # 70-80% usage = 40% health
+        # 80-100% usage = 0% health
+        if used_percent < 60:
+            health = 100
+        elif used_percent < 70:
+            health = 70
+        elif used_percent < 80:
+            health = 40
+        else:
+            health = 0
+        
+        metrics = {
+            "total_bytes": total,
+            "used_bytes": used,
+            "free_bytes": free,
+            "used_percent": round(used_percent, 2),
+            "total_mb": round(total / (1024 * 1024), 2),
+            "used_mb": round(used / (1024 * 1024), 2),
+            "free_mb": round(free / (1024 * 1024), 2),
+            "health": health,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        print(f"💾 Disk space: {health}% health (Used: {used_percent:.1f}%, {metrics['used_mb']:.0f}/{metrics['total_mb']:.0f} MB)")
+        
+        # Create incident if health is below threshold
+        if health < HEALTH_THRESHOLD:
+            incident_key = "disk-space"
+            if incident_key not in reported_incidents:
+                error_logs = [
+                    f"Disk usage at {used_percent:.1f}% ({metrics['used_mb']:.0f} MB used)",
+                    f"Free space: {metrics['free_mb']:.0f} MB remaining",
+                    f"Total capacity: {metrics['total_mb']:.0f} MB",
+                    "Old log files are filling up disk space and need cleanup"
+                ]
+                
+                create_incident(
+                    message=f"Disk space critically low - Health: {health}%",
+                    source="disk-monitor",
+                    error_logs=error_logs,
+                    metrics=metrics
+                )
+                
+                reported_incidents.add(incident_key)
+                print(f"🚨 Incident created for {incident_key} (will not create another until healthy)")
+                
+                if len(reported_incidents) > 10:
+                    reported_incidents.clear()
+        else:
+            if "disk-space" in reported_incidents:
+                print(f"✅ Disk space restored to healthy level - clearing incident tracker")
+                reported_incidents.discard("disk-space")
+        
+        return health
+        
+    except Exception as e:
+        print(f"❌ Error checking disk space: {e}")
+        return None
+
 def health_check_loop():
     """Run health checks on all monitored services"""
     print(f"🏥 Running health checks... (threshold: {HEALTH_THRESHOLD}%)")
@@ -154,8 +443,14 @@ def health_check_loop():
     # Check Redis
     redis_health = check_redis_health()
     
-    # Add more services here in the future
-    # postgres_health = check_postgres_health()
+    # Check PostgreSQL connections
+    postgres_health = check_postgres_health()
+    
+    # Check PostgreSQL bloat
+    postgres_bloat_health = check_postgres_bloat()
+    
+    # Check disk space
+    disk_health = check_disk_health()
     
     print(f"✅ Health check complete")
 
@@ -165,7 +460,7 @@ def health():
     """Health check endpoint for the monitor itself"""
     return jsonify({
         "status": "healthy",
-        "monitoring": ["redis-test"],
+        "monitoring": ["redis-test", "postgres-test", "disk-space"],
         "check_interval": CHECK_INTERVAL,
         "health_threshold": HEALTH_THRESHOLD
     }), 200
@@ -173,53 +468,183 @@ def health():
 @app.route('/status', methods=['GET'])
 def status():
     """Get current status of monitored services with detailed metrics"""
+    services = {}
+    
+    # Get Redis status
     try:
         container = docker_client.containers.get("redis-test")
-        
-        # Execute INFO memory command
         result = container.exec_run(["redis-cli", "INFO", "memory"])
-        if result.exit_code != 0:
-            return jsonify({"error": "Failed to get Redis status"}), 500
+        if result.exit_code == 0:
+            output = result.output.decode()
+            memory_info = {}
+            for line in output.split('\n'):
+                if ':' in line and not line.startswith('#'):
+                    key, value = line.split(':', 1)
+                    memory_info[key.strip()] = value.strip()
+            
+            used_memory = int(memory_info.get('used_memory', 0))
+            max_memory = int(memory_info.get('maxmemory', 1))
+            
+            if max_memory > 0:
+                memory_percent = round((used_memory / max_memory * 100), 2)
+                health = max(0, 100 - int(memory_percent))
+            else:
+                memory_percent = 0
+                health = 100
+            
+            services["redis-test"] = {
+                "health": health,
+                "memory_used": used_memory,
+                "memory_max": max_memory,
+                "memory_percent": memory_percent,
+                "status": "healthy" if health >= HEALTH_THRESHOLD else "unhealthy",
+                "will_trigger_incident": memory_percent >= (100 - HEALTH_THRESHOLD)
+            }
+    except Exception as e:
+        print(f"Error getting Redis status: {e}")
+    
+    # Get PostgreSQL status
+    try:
+        conn = psycopg2.connect(
+            host="postgres-test",
+            port=5432,
+            database="testdb",
+            user="testuser",
+            password="testpass",
+            connect_timeout=5
+        )
+        cursor = conn.cursor()
         
-        output = result.output.decode()
+        cursor.execute("""
+            SELECT 
+                count(*) FILTER (WHERE state = 'idle') as idle_connections,
+                count(*) FILTER (WHERE state = 'active') as active_connections,
+                count(*) as total_connections,
+                (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') as max_connections
+            FROM pg_stat_activity
+            WHERE pid <> pg_backend_pid()
+        """)
         
-        # Parse memory info
-        memory_info = {}
-        for line in output.split('\n'):
-            if ':' in line and not line.startswith('#'):
-                key, value = line.split(':', 1)
-                memory_info[key.strip()] = value.strip()
+        row = cursor.fetchone()
+        idle_connections = row[0]
+        active_connections = row[1]
+        total_connections = row[2]
+        max_connections = row[3]
         
-        # Get memory values
-        used_memory = int(memory_info.get('used_memory', 0))
-        max_memory = int(memory_info.get('maxmemory', 1))
+        cursor.close()
+        conn.close()
         
-        # Calculate percentages
-        if max_memory > 0:
-            memory_percent = round((used_memory / max_memory * 100), 2)
-            health = max(0, 100 - int(memory_percent))
+        # Calculate health
+        if idle_connections > 15:
+            health = 0
+        elif idle_connections > 12:
+            health = 30
+        elif idle_connections > 10:
+            health = 50
+        elif idle_connections > 8:
+            health = 70
         else:
-            memory_percent = 0
             health = 100
         
-        return jsonify({
-            "services": {
-                "redis-test": {
-                    "health": health,
-                    "memory_used": used_memory,
-                    "memory_max": max_memory,
-                    "memory_percent": memory_percent,
-                    "status": "healthy" if health >= HEALTH_THRESHOLD else "unhealthy",
-                    "will_trigger_incident": memory_percent >= (100 - HEALTH_THRESHOLD)
-                }
-            },
-            "last_check": datetime.now().isoformat()
-        }), 200
+        idle_ratio = round((idle_connections / max(total_connections, 1)) * 100, 2)
         
-    except docker.errors.NotFound:
-        return jsonify({"error": "Redis container not found"}), 404
+        services["postgres-test"] = {
+            "health": health,
+            "idle_connections": idle_connections,
+            "active_connections": active_connections,
+            "total_connections": total_connections,
+            "max_connections": max_connections,
+            "idle_ratio": idle_ratio,
+            "status": "healthy" if health >= HEALTH_THRESHOLD else "unhealthy",
+            "will_trigger_incident": health < HEALTH_THRESHOLD
+        }
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Error getting PostgreSQL status: {e}")
+    
+    # Get PostgreSQL bloat status
+    try:
+        conn = psycopg2.connect(
+            host="postgres-test",
+            port=5432,
+            database="testdb",
+            user="testuser",
+            password="testpass",
+            connect_timeout=5
+        )
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT n_live_tup, n_dead_tup,
+                   CASE WHEN n_live_tup > 0 THEN (n_dead_tup::float / n_live_tup) * 100 ELSE 0 END as dead_ratio
+            FROM pg_stat_user_tables
+            WHERE relname = 'bloat_test'
+        """)
+        stats = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        bloat_health = 100
+        dead_tup = 0
+        live_tup = 0
+        dead_ratio = 0.0
+        
+        if stats:
+            live_tup, dead_tup, dead_ratio = stats
+            if dead_ratio < 20:
+                bloat_health = 100
+            elif dead_ratio < 40:
+                bloat_health = 70
+            elif dead_ratio < 60:
+                bloat_health = 40
+            else:
+                bloat_health = 0
+        
+        services["postgres-bloat"] = {
+            "health": bloat_health,
+            "dead_tuples": int(dead_tup),
+            "live_tuples": int(live_tup),
+            "dead_ratio": round(dead_ratio, 2),
+            "status": "healthy" if bloat_health >= HEALTH_THRESHOLD else "unhealthy",
+            "will_trigger_incident": bloat_health < HEALTH_THRESHOLD
+        }
+    except Exception as e:
+        print(f"Error getting PostgreSQL bloat status: {e}")
+    
+    # Get disk space status
+    try:
+        usage = shutil.disk_usage("/var/log")
+        total = usage.total
+        used = usage.used
+        free = usage.free
+        used_percent = (used / total) * 100
+        
+        # Calculate health (same as check_disk_health)
+        if used_percent < 60:
+            disk_health = 100
+        elif used_percent < 70:
+            disk_health = 70
+        elif used_percent < 80:
+            disk_health = 40
+        else:
+            disk_health = 0
+        
+        services["disk-space"] = {
+            "health": disk_health,
+            "used_percent": round(used_percent, 2),
+            "used_mb": round(used / (1024 * 1024), 2),
+            "free_mb": round(free / (1024 * 1024), 2),
+            "total_mb": round(total / (1024 * 1024), 2),
+            "status": "healthy" if disk_health >= HEALTH_THRESHOLD else "unhealthy",
+            "will_trigger_incident": disk_health < HEALTH_THRESHOLD
+        }
+    except Exception as e:
+        print(f"Error getting disk space status: {e}")
+    
+    return jsonify({
+        "services": services,
+        "last_check": datetime.now().isoformat()
+    }), 200
 
 @app.route('/trigger/redis-memory', methods=['POST'])
 def trigger_redis_memory():
@@ -292,8 +717,8 @@ def clear_redis():
         
         if result.exit_code == 0:
             print("✅ Redis cleared successfully")
-            # Clear reported incidents to allow new incident creation
-            reported_incidents.clear()
+            # Clear reported incident to allow new incident creation
+            reported_incidents.discard("redis-test")
             
             return jsonify({
                 "status": "success",
@@ -312,6 +737,393 @@ def clear_redis():
         }), 404
     except Exception as e:
         print(f"❌ Error clearing Redis: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+# Global storage for idle connections (kept open)
+idle_postgres_connections = []
+
+@app.route('/trigger/postgres-connections', methods=['POST'])
+def trigger_postgres_connections():
+    """Create many idle PostgreSQL connections for testing"""
+    global idle_postgres_connections
+    
+    try:
+        print("🔥 Creating idle PostgreSQL connections...")
+        
+        # Clear old connections first
+        for conn in idle_postgres_connections:
+            try:
+                conn.close()
+            except:
+                pass
+        idle_postgres_connections = []
+        
+        # Create 12 idle connections (will trigger health < 70%)
+        for i in range(12):
+            try:
+                conn = psycopg2.connect(
+                    host="postgres-test",
+                    port=5432,
+                    database="testdb",
+                    user="testuser",
+                    password="testpass",
+                    connect_timeout=5
+                )
+                idle_postgres_connections.append(conn)
+                print(f"  Created connection {i+1}/12")
+            except Exception as e:
+                print(f"  Failed to create connection {i+1}: {e}")
+                break
+        
+        # Check health after creating connections
+        time.sleep(1)
+        health = check_postgres_health()
+        
+        print(f"✅ Created {len(idle_postgres_connections)} idle connections (Health: {health}%)")
+        print(f"   Note: Connections stored globally and will remain open")
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Created {len(idle_postgres_connections)} idle PostgreSQL connections",
+            "health": health,
+            "note": "Incident will be created within 5 seconds if health < 70%",
+            "warning": "Connections remain open - restart container or call /clear/postgres to cleanup"
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error creating PostgreSQL connections: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/clear/postgres', methods=['POST'])
+def clear_postgres():
+    """Kill idle PostgreSQL connections"""
+    try:
+        conn = psycopg2.connect(
+            host="postgres-test",
+            port=5432,
+            database="testdb",
+            user="testuser",
+            password="testpass",
+            connect_timeout=5
+        )
+        cursor = conn.cursor()
+        
+        # Kill all idle connections (except our own)
+        cursor.execute("""
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE state = 'idle' 
+            AND pid <> pg_backend_pid()
+            AND datname = 'testdb'
+        """)
+        
+        # Count how many were killed
+        cursor.execute("""
+            SELECT count(*) FROM pg_stat_activity 
+            WHERE state = 'idle' AND pid <> pg_backend_pid()
+        """)
+        remaining = cursor.fetchone()[0]
+        
+        cursor.close()
+        conn.close()
+        
+        print(f"✅ PostgreSQL idle connections cleared (remaining: {remaining})")
+        # Clear reported incidents to allow new incident creation
+        reported_incidents.discard("postgres-test")
+        
+        return jsonify({
+            "status": "success",
+            "message": "PostgreSQL idle connections cleared",
+            "remaining_idle": remaining
+        }), 200
+        
+    except psycopg2.OperationalError as e:
+        return jsonify({
+            "status": "error",
+            "message": f"PostgreSQL connection failed: {e}"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/trigger/postgres-bloat', methods=['POST'])
+def trigger_postgres_bloat():
+    """Create table bloat by generating dead tuples"""
+    try:
+        print("🔥 Creating PostgreSQL table bloat...")
+        
+        conn = psycopg2.connect(
+            host="postgres-test",
+            port=5432,
+            database="testdb",
+            user="testuser",
+            password="testpass",
+            connect_timeout=5
+        )
+        cursor = conn.cursor()
+        
+        # Create a test table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bloat_test (
+                id SERIAL PRIMARY KEY,
+                data TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+        
+        # Insert rows
+        print("  Inserting 1000 rows...")
+        cursor.execute("""
+            INSERT INTO bloat_test (data)
+            SELECT 'test_data_' || generate_series(1, 1000)
+        """)
+        conn.commit()
+        print("  ✅ 1000 rows inserted")
+        
+        # Update and delete to create dead tuples (50% dead ratio)
+        print("  Creating dead tuples (deleting 50% of rows)...")
+        cursor.execute("DELETE FROM bloat_test WHERE id % 2 = 0")
+        conn.commit()
+        print("  ✅ Dead tuples created")
+        
+        # Get stats
+        cursor.execute("""
+            SELECT n_live_tup, n_dead_tup,
+                   CASE WHEN n_live_tup > 0 
+                        THEN (n_dead_tup::float / n_live_tup) * 100 
+                        ELSE 0 
+                   END as dead_ratio
+            FROM pg_stat_user_tables
+            WHERE relname = 'bloat_test'
+        """)
+        stats = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        # Check health
+        time.sleep(1)
+        health = check_postgres_bloat()
+        
+        if stats:
+            live, dead, ratio = stats
+            print(f"✅ Bloat created (Live: {live}, Dead: {dead}, Ratio: {ratio:.1f}%, Health: {health}%)")
+        
+        return jsonify({
+            "status": "success",
+            "message": "PostgreSQL table bloat created",
+            "health": health,
+            "live_tuples": int(stats[0]) if stats else 0,
+            "dead_tuples": int(stats[1]) if stats else 0,
+            "dead_ratio": round(stats[2], 2) if stats else 0,
+            "note": "Incident will be created within 5 seconds if health < 70%"
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error creating PostgreSQL bloat: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/clear/postgres-bloat', methods=['POST'])
+def clear_postgres_bloat():
+    """Run VACUUM to clear table bloat"""
+    try:
+        print("🧹 Running VACUUM to clear bloat...")
+        
+        conn = psycopg2.connect(
+            host="postgres-test",
+            port=5432,
+            database="testdb",
+            user="testuser",
+            password="testpass",
+            connect_timeout=5
+        )
+        conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        cursor = conn.cursor()
+        
+        # Run VACUUM ANALYZE on the bloat_test table
+        cursor.execute("VACUUM ANALYZE bloat_test")
+        
+        # Get updated stats
+        cursor.execute("""
+            SELECT n_live_tup, n_dead_tup,
+                   CASE WHEN n_live_tup > 0 
+                        THEN (n_dead_tup::float / n_live_tup) * 100 
+                        ELSE 0 
+                   END as dead_ratio
+            FROM pg_stat_user_tables
+            WHERE relname = 'bloat_test'
+        """)
+        stats = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        if stats:
+            live, dead, ratio = stats
+            print(f"✅ VACUUM complete (Live: {live}, Dead: {dead}, Ratio: {ratio:.1f}%)")
+        
+        # Clear reported incident
+        reported_incidents.discard("postgres-test-bloat")
+        
+        return jsonify({
+            "status": "success",
+            "message": "PostgreSQL bloat cleared with VACUUM",
+            "live_tuples": int(stats[0]) if stats else 0,
+            "dead_tuples": int(stats[1]) if stats else 0,
+            "dead_ratio": round(stats[2], 2) if stats else 0
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error clearing PostgreSQL bloat: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/trigger/disk-full', methods=['POST'])
+def trigger_disk_full():
+    """Fill disk space with large log files for testing"""
+    try:
+        print("🔥 Filling disk space with large log files...")
+        
+        # Create large log files in /var/log to fill disk
+        # Each file is 50MB, create enough to exceed 60% threshold
+        
+        # Get current disk usage
+        usage = shutil.disk_usage("/var/log")
+        total = usage.total
+        free = usage.free
+        
+        # Calculate how much to fill (aim for 75% usage to trigger incident)
+        target_used_percent = 75
+        target_used_bytes = int((target_used_percent / 100) * total)
+        bytes_to_fill = target_used_bytes - usage.used
+        
+        # Ensure we fill at least 100MB to trigger the incident
+        if bytes_to_fill < 100 * 1024 * 1024:
+            bytes_to_fill = 100 * 1024 * 1024
+        
+        # Create one large file for speed (instead of many small files)
+        # Use larger block size (10MB) for faster writes
+        file_size_mb = int(bytes_to_fill / (1024 * 1024))
+        
+        print(f"  Creating single {file_size_mb}MB file for faster fill...")
+        
+        try:
+            # Use dd with large block size for maximum speed
+            subprocess.run([
+                "dd",
+                "if=/dev/zero",
+                f"of=/var/log/incident_sim_test_bulk.log",
+                "bs=10M",  # 10MB blocks for speed
+                f"count={max(1, int(file_size_mb / 10))}",  # Number of 10MB blocks
+                "status=none"
+            ], check=True, capture_output=True)
+            
+            print(f"  ✅ File created successfully")
+                    
+        except subprocess.CalledProcessError as e:
+            print(f"  ⚠️  Error creating file: {e}")
+            # If large file fails, try smaller fallback
+            print(f"  Trying smaller file...")
+            try:
+                subprocess.run([
+                    "dd",
+                    "if=/dev/zero",
+                    f"of=/var/log/incident_sim_test_0.log",
+                    "bs=1M",
+                    f"count={file_size_mb}",
+                    "status=none"
+                ], check=True, capture_output=True)
+            except:
+                pass
+        
+        # Get final disk usage (don't call check_disk_health to avoid immediate incident)
+        time.sleep(1)
+        usage = shutil.disk_usage("/var/log")
+        used_percent = (usage.used / usage.total) * 100
+        
+        # Calculate health for response
+        if used_percent < 60:
+            health = 100
+        elif used_percent < 70:
+            health = 70
+        elif used_percent < 80:
+            health = 40
+        else:
+            health = 0
+        
+        print(f"✅ Disk fill complete (Usage: {used_percent:.1f}%, Health: {health}%)")
+        
+        return jsonify({
+            "status": "success",
+            "message": "Disk space filled with log files",
+            "health": health,
+            "used_percent": round(used_percent, 2),
+            "used_mb": round(usage.used / (1024 * 1024), 2),
+            "note": "Incident will be created within 5 seconds if health < 70%"
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error filling disk space: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/clear/disk', methods=['POST'])
+def clear_disk():
+    """Clean up disk space by removing log files"""
+    try:
+        print("🧹 Cleaning up disk space...")
+        
+        # Remove all test log files created by trigger
+        # Use shell=True to allow wildcard expansion
+        # Remove both bulk file and any legacy numbered files
+        subprocess.run(
+            "rm -f /var/log/incident_sim_test_*.log /var/log/incident_sim_test_bulk.log",
+            shell=True,
+            check=True,
+            capture_output=True
+        )
+        
+        # Get updated disk usage
+        usage = shutil.disk_usage("/var/log")
+        used_percent = (usage.used / usage.total) * 100
+        free_mb = usage.free / (1024 * 1024)
+        
+        print(f"✅ Disk cleanup complete (Usage: {used_percent:.1f}%, Free: {free_mb:.0f} MB)")
+        
+        # Clear reported incident
+        reported_incidents.discard("disk-space")
+        
+        return jsonify({
+            "status": "success",
+            "message": "Disk space cleaned up",
+            "used_percent": round(used_percent, 2),
+            "free_mb": round(free_mb, 2)
+        }), 200
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error cleaning disk: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+    except Exception as e:
+        print(f"❌ Error cleaning disk: {e}")
         return jsonify({
             "status": "error",
             "message": str(e)
@@ -338,7 +1150,7 @@ if __name__ == "__main__":
     print(f"Backend URL: {BACKEND_URL}")
     print(f"Check Interval: {CHECK_INTERVAL}s")
     print(f"Health Threshold: {HEALTH_THRESHOLD}%")
-    print(f"Monitoring Services: redis-test")
+    print(f"Monitoring Services: redis-test, postgres-test, disk-space")
     print("=" * 60)
     
     # Start background scheduler

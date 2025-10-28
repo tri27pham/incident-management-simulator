@@ -204,6 +204,66 @@ export async function triggerRedisMemoryFailure(): Promise<{ status: string; mes
   return response.json();
 }
 
+export async function clearPostgres(): Promise<{ status: string; message: string }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/clear/postgres`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to clear PostgreSQL connections');
+  }
+  return response.json();
+}
+
+export async function triggerPostgresConnectionFailure(): Promise<{ status: string; message: string; health: number }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/trigger/postgres-connections`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to trigger PostgreSQL connection failure');
+  }
+  return response.json();
+}
+
+export async function triggerPostgresBloat(): Promise<{ status: string; message: string; health: number }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/trigger/postgres-bloat`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to trigger PostgreSQL bloat');
+  }
+  return response.json();
+}
+
+export async function clearPostgresBloat(): Promise<{ status: string; message: string }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/clear/postgres-bloat`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to clear PostgreSQL bloat');
+  }
+  return response.json();
+}
+
+export async function triggerDiskFull(): Promise<{ status: string; message: string; health: number }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/trigger/disk-full`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to trigger disk full');
+  }
+  return response.json();
+}
+
+export async function clearDisk(): Promise<{ status: string; message: string }> {
+  const response = await fetch(`${HEALTH_MONITOR_URL}/clear/disk`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to clear disk space');
+  }
+  return response.json();
+}
+
 export async function getHealthMonitorStatus(): Promise<{
   services: {
     'redis-test': {
@@ -211,6 +271,33 @@ export async function getHealthMonitorStatus(): Promise<{
       memory_used: number;
       memory_max: number;
       memory_percent: number;
+      status: string;
+      will_trigger_incident: boolean;
+    };
+    'postgres-test'?: {
+      health: number;
+      idle_connections: number;
+      active_connections: number;
+      total_connections: number;
+      max_connections: number;
+      idle_ratio: number;
+      status: string;
+      will_trigger_incident: boolean;
+    };
+    'postgres-bloat'?: {
+      health: number;
+      dead_tuples: number;
+      live_tuples: number;
+      dead_ratio: number;
+      status: string;
+      will_trigger_incident: boolean;
+    };
+    'disk-space'?: {
+      health: number;
+      used_percent: number;
+      used_mb: number;
+      free_mb: number;
+      total_mb: number;
       status: string;
       will_trigger_incident: boolean;
     };

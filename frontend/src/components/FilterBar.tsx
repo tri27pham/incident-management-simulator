@@ -8,6 +8,8 @@ interface FilterBarProps {
   onSeverityToggle: (severity: IncidentSeverity) => void;
   onTeamToggle: (team: string) => void;
   onClearFilters: () => void;
+  expandedCardId: string | null;
+  onCloseExpandedCard: () => void;
 }
 
 const severityOptions: { value: IncidentSeverity; label: string; color: string }[] = [
@@ -24,9 +26,13 @@ export function FilterBar({
   onSeverityToggle,
   onTeamToggle,
   onClearFilters,
+  expandedCardId,
+  onCloseExpandedCard,
 }: FilterBarProps) {
   const [severityOpen, setSeverityOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
+  const [severityPosition, setSeverityPosition] = useState<{ top: number; left: number } | null>(null);
+  const [teamPosition, setTeamPosition] = useState<{ top: number; left: number } | null>(null);
   const severityRef = useRef<HTMLDivElement>(null);
   const teamRef = useRef<HTMLDivElement>(null);
 
@@ -63,9 +69,23 @@ export function FilterBar({
   return (
     <div className="flex items-center gap-2 mb-4">
       {/* Severity Dropdown */}
-      <div className="relative" ref={severityRef}>
+      <div className="relative" ref={severityRef} style={{ zIndex: 10000 }}>
         <button
-          onClick={() => setSeverityOpen(!severityOpen)}
+          onClick={() => {
+            // Close expanded card when opening dropdown
+            if (!severityOpen && expandedCardId) {
+              onCloseExpandedCard();
+            }
+            // Calculate position and toggle
+            if (!severityOpen && severityRef.current) {
+              const rect = severityRef.current.getBoundingClientRect();
+              setSeverityPosition({
+                top: rect.bottom + 8,
+                left: rect.left
+              });
+            }
+            setSeverityOpen(!severityOpen);
+          }}
           className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors ${
             selectedSeverities.length > 0
               ? 'bg-blue-50 border-blue-300 text-blue-700'
@@ -84,9 +104,12 @@ export function FilterBar({
         </button>
 
         {severityOpen && (
-          <div className="absolute z-10 mt-2 w-56 rounded-lg shadow-lg" style={{
+          <div className="fixed w-56 rounded-lg shadow-lg" style={{
             backgroundColor: `rgb(var(--card-bg))`,
-            border: `1px solid rgb(var(--border-color))`
+            border: `1px solid rgb(var(--border-color))`,
+            zIndex: 999999,
+            top: severityPosition ? `${severityPosition.top}px` : '60px',
+            left: severityPosition ? `${severityPosition.left}px` : '20px',
           }}>
             <div className="p-2">
               {severityOptions.map((severity) => {
@@ -112,9 +135,23 @@ export function FilterBar({
       </div>
 
       {/* Team Dropdown */}
-      <div className="relative" ref={teamRef}>
+      <div className="relative" ref={teamRef} style={{ zIndex: 10000 }}>
         <button
-          onClick={() => setTeamOpen(!teamOpen)}
+          onClick={() => {
+            // Close expanded card when opening dropdown
+            if (!teamOpen && expandedCardId) {
+              onCloseExpandedCard();
+            }
+            // Calculate position and toggle
+            if (!teamOpen && teamRef.current) {
+              const rect = teamRef.current.getBoundingClientRect();
+              setTeamPosition({
+                top: rect.bottom + 8,
+                left: rect.left
+              });
+            }
+            setTeamOpen(!teamOpen);
+          }}
           className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors ${
             selectedTeams.length > 0
               ? 'bg-blue-50 border-blue-300 text-blue-700'
@@ -133,9 +170,12 @@ export function FilterBar({
         </button>
 
         {teamOpen && (
-          <div className="absolute z-10 mt-2 w-56 rounded-lg shadow-lg" style={{
+          <div className="fixed w-56 rounded-lg shadow-lg" style={{
             backgroundColor: `rgb(var(--card-bg))`,
-            border: `1px solid rgb(var(--border-color))`
+            border: `1px solid rgb(var(--border-color))`,
+            zIndex: 999999,
+            top: teamPosition ? `${teamPosition.top}px` : '60px',
+            left: teamPosition ? `${teamPosition.left}px` : '100px',
           }}>
             <div className="p-2">
               {availableTeams.map((team) => {
