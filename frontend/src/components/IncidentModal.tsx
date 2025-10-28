@@ -564,11 +564,11 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                 )}
               </div>
 
-              {/* AI Agent Remediation Section */}
+              {/* SRE Agent Remediation Section */}
               {incident.actionable && incident.incidentType === 'real_system' && (
                 <div className="shrink-0">
                   <div className="flex items-center gap-2 mb-3">
-                    <h3 className="text-sm font-semibold text-primary">AI Agent Remediation</h3>
+                    <h3 className="text-sm font-semibold text-primary">SRE Agent Remediation</h3>
                     <span 
                       className="px-2 py-0.5 rounded text-xs font-medium"
                       style={{ 

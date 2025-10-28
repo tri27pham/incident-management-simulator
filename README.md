@@ -2,6 +2,21 @@
 
 A full-stack application that simulates incident management with AI-powered diagnosis and suggested fixes.
 
+## 🔐 Authentication
+
+**The application is password-protected.** 
+
+Default password: `changeme`  
+Username is always: `user` (you only need to remember the password)
+
+⚠️ **IMPORTANT:** Change the password before deploying! See [AUTH_CONFIG.md](./AUTH_CONFIG.md) for details.
+
+To set a custom password:
+```bash
+export AUTH_PASSWORD=your_secure_password
+docker-compose up -d --build frontend
+```
+
 ## 🚀 Quick Start
 
 ### Prerequisites

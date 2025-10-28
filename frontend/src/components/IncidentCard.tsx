@@ -174,7 +174,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {item.actionable && item.incidentType === 'real_system' && (
                 <span 
                   className="text-sm opacity-60 hover:opacity-100 transition-opacity"
-                  title="AI Agent Ready - can take automated actions"
+                  title="SRE Agent Ready - can take automated actions"
                 >
                   🤖
                 </span>

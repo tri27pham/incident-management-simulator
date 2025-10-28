@@ -5,6 +5,7 @@ import { IncidentColumn } from './components/IncidentColumn';
 import { IncidentModal } from './components/IncidentModal';
 import { FilterBar } from './components/FilterBar';
 import { ResolvedIncidentsPanel } from './components/ResolvedIncidentsPanel';
+import { LoginScreen } from './components/LoginScreen';
 import * as api from './services/api';
 import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
 import { useTheme } from './contexts/ThemeContext';
@@ -164,6 +165,10 @@ const mockBoardState: IncidentBoardState = {
 
 function App() {
   const { theme, toggleTheme } = useTheme();
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    // Check if already authenticated in this session
+    return sessionStorage.getItem('authenticated') === 'true';
+  });
   const [board, setBoard] = useState(emptyBoardState);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [modalIncident, setModalIncident] = useState<Incident | null>(null);
@@ -181,6 +186,7 @@ function App() {
   const [isTriggeringFailure, setIsTriggeringFailure] = useState(false);
   const [progressBar, setProgressBar] = useState<{ show: boolean; message: string; progress: number } | null>(null);
   const [isFixingAll, setIsFixingAll] = useState(false);
+  const blockWebSocketUpdatesRef = useRef(false);
   const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
   const [postgresIdleConnections, setPostgresIdleConnections] = useState<number | null>(null);
   const [systemsHealth, setSystemsHealth] = useState<{
@@ -633,6 +639,7 @@ function App() {
   const handleTriggerPostgresConnections = async () => {
     setIsTriggeringFailure(true);
     setShowFailureDropdown(false);
+    blockWebSocketUpdatesRef.current = true; // Block WebSocket updates
     
     try {
       console.log('🔥 Triggering PostgreSQL connection exhaustion...');
@@ -681,6 +688,7 @@ function App() {
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
       setBoard(newBoard);
       setResolvedIncidents(resolved);
+      blockWebSocketUpdatesRef.current = false; // Unblock WebSocket updates
       
       // Clear progress bar after 2 seconds
       setTimeout(() => setProgressBar(null), 2000);
@@ -690,6 +698,7 @@ function App() {
       setError('Failed to trigger PostgreSQL failure');
       setTimeout(() => setError(null), 3000);
       setProgressBar(null);
+      blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
       setIsTriggeringFailure(false);
     }
@@ -698,6 +707,7 @@ function App() {
   const handleTriggerPostgresBloat = async () => {
     setIsTriggeringFailure(true);
     setShowFailureDropdown(false);
+    blockWebSocketUpdatesRef.current = true; // Block WebSocket updates
     
     try {
       console.log('🔥 Triggering PostgreSQL table bloat...');
@@ -746,6 +756,7 @@ function App() {
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
       setBoard(newBoard);
       setResolvedIncidents(resolved);
+      blockWebSocketUpdatesRef.current = false; // Unblock WebSocket updates
       
       // Clear progress bar after 2 seconds
       setTimeout(() => setProgressBar(null), 2000);
@@ -755,6 +766,7 @@ function App() {
       setError('Failed to trigger PostgreSQL bloat');
       setTimeout(() => setError(null), 3000);
       setProgressBar(null);
+      blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
       setIsTriggeringFailure(false);
     }
@@ -763,8 +775,9 @@ function App() {
   const handleTriggerDiskFull = async () => {
     setIsTriggeringFailure(true);
     setShowFailureDropdown(false);
+    blockWebSocketUpdatesRef.current = true; // Block WebSocket updates
     
-    try {
+    try{
       console.log('🔥 Triggering disk space exhaustion...');
       setProgressBar({ 
         show: true, 
@@ -811,6 +824,7 @@ function App() {
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
       setBoard(newBoard);
       setResolvedIncidents(resolved);
+      blockWebSocketUpdatesRef.current = false; // Unblock WebSocket updates
       
       // Clear progress bar after 2 seconds
       setTimeout(() => setProgressBar(null), 2000);
@@ -820,6 +834,7 @@ function App() {
       setError('Failed to trigger disk full');
       setTimeout(() => setError(null), 3000);
       setProgressBar(null);
+      blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
       setIsTriggeringFailure(false);
     }
@@ -1081,6 +1096,12 @@ function App() {
             setBoard(emptyBoardState);
             setResolvedIncidents([]);
             setModalIncident(null);
+            return;
+          }
+          
+          // Block WebSocket updates during failure trigger progress bar
+          if (blockWebSocketUpdatesRef.current) {
+            console.log('🚫 Blocking WebSocket update during failure trigger');
             return;
           }
           
@@ -1346,6 +1367,11 @@ function App() {
     );
   }
 
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: `rgb(var(--bg-primary))` }}>
       {/* Progress Bar */}
@@ -1432,7 +1458,7 @@ function App() {
             </button>
 
             {/* Trigger Failure Dropdown */}
-            <div className="relative" ref={dropdownRef} style={{ zIndex: 10000 }}>
+            <div className="relative" ref={dropdownRef} style={{ zIndex: 40 }}>
               <button 
                 onClick={() => {
                   // ALWAYS close expanded card when clicking this button (opening or closing dropdown)
@@ -1495,7 +1521,7 @@ function App() {
                     backgroundColor: `rgb(var(--card-bg))`,
                     borderColor: `rgb(var(--border-color))`,
                     minWidth: '240px',
-                    zIndex: 999999, // Maximum z-index
+                    zIndex: 40, // Below modal (z-50) but above cards
                     top: dropdownPosition ? `${dropdownPosition.top}px` : '60px',
                     right: dropdownPosition ? `${dropdownPosition.right}px` : '20px',
                   }}
@@ -1771,6 +1797,30 @@ function App() {
                   <span className="text-xs">Dark</span>
                 </>
               )}
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={() => {
+                sessionStorage.removeItem('authenticated');
+                setIsAuthenticated(false);
+              }}
+              className="p-2 rounded-lg transition-all duration-200 flex items-center gap-2 hover:bg-theme-button-hover"
+              style={{
+                color: `rgb(var(--text-secondary))`,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'rgb(239, 68, 68)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = `rgb(var(--text-secondary))`;
+              }}
+              title="Logout"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span className="text-xs">Logout</span>
             </button>
           </div>
         </div>

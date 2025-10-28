@@ -13,6 +13,9 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [agentExecutions, setAgentExecutions] = useState<Map<string, AgentExecutionResponse[]>>(new Map());
   const [loadingExecutions, setLoadingExecutions] = useState<Set<string>>(new Set());
+  const [expandedRemediations, setExpandedRemediations] = useState<Set<string>>(new Set());
+  const [expandedDiagnosis, setExpandedDiagnosis] = useState<Set<string>>(new Set());
+  const [expandedSolutions, setExpandedSolutions] = useState<Set<string>>(new Set());
 
   // Fetch agent executions when an incident is expanded
   useEffect(() => {
@@ -146,7 +149,7 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                         {incident.actionable && incident.incidentType === 'real_system' && (
                           <span 
                             className="px-2 py-0.5 rounded text-xs font-medium"
-                            title="AI Agent Ready"
+                            title="SRE Agent Ready"
                           >
                             🤖
                           </span>
@@ -216,31 +219,103 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
 
                         {/* AI Diagnosis */}
                         {incident.hasDiagnosis && incident.diagnosis && (
-                          <div className="rounded-lg p-3" style={{ backgroundColor: `rgb(var(--bg-secondary))`, border: `2px solid rgb(74, 222, 128)` }}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(74, 222, 128)' }}>
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <div className="rounded-lg" style={{ backgroundColor: `rgb(var(--bg-secondary))`, border: `2px solid rgb(74, 222, 128)` }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedDiagnosis(prev => {
+                                  const newSet = new Set(prev);
+                                  if (newSet.has(incident.id)) {
+                                    newSet.delete(incident.id);
+                                  } else {
+                                    newSet.add(incident.id);
+                                  }
+                                  return newSet;
+                                });
+                              }}
+                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50"
+                              style={{
+                                backgroundColor: expandedDiagnosis.has(incident.id) ? 'rgba(74, 222, 128, 0.05)' : 'transparent'
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(74, 222, 128)' }}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <p className="text-xs font-semibold text-primary">AI Diagnosis</p>
+                              </div>
+                              <svg
+                                className="w-4 h-4 transition-transform duration-200"
+                                style={{
+                                  color: 'rgb(var(--text-secondary))',
+                                  transform: expandedDiagnosis.has(incident.id) ? 'rotate(180deg)' : 'rotate(0deg)'
+                                }}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                               </svg>
-                              <p className="text-xs font-semibold text-primary">AI Diagnosis</p>
-                            </div>
-                            <div className="text-xs text-secondary max-h-32 overflow-y-auto" style={{ whiteSpace: 'pre-wrap' }}>
-                              {incident.diagnosis}
-                            </div>
+                            </button>
+
+                            {expandedDiagnosis.has(incident.id) && (
+                              <div className="px-3 pb-3" style={{ borderTop: `1px solid rgb(var(--border-color))` }}>
+                                <div className="text-xs text-secondary max-h-32 overflow-y-auto mt-2" style={{ whiteSpace: 'pre-wrap' }}>
+                                  {incident.diagnosis}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
                         {/* Suggested Solution */}
                         {incident.hasSolution && incident.solution && (
-                          <div className="rounded-lg p-3" style={{ backgroundColor: `rgb(var(--bg-secondary))`, border: `2px solid rgb(96, 165, 250)` }}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(96, 165, 250)' }}>
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          <div className="rounded-lg" style={{ backgroundColor: `rgb(var(--bg-secondary))`, border: `2px solid rgb(96, 165, 250)` }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedSolutions(prev => {
+                                  const newSet = new Set(prev);
+                                  if (newSet.has(incident.id)) {
+                                    newSet.delete(incident.id);
+                                  } else {
+                                    newSet.add(incident.id);
+                                  }
+                                  return newSet;
+                                });
+                              }}
+                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50"
+                              style={{
+                                backgroundColor: expandedSolutions.has(incident.id) ? 'rgba(96, 165, 250, 0.05)' : 'transparent'
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(96, 165, 250)' }}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                </svg>
+                                <p className="text-xs font-semibold text-primary">Suggested Solution</p>
+                              </div>
+                              <svg
+                                className="w-4 h-4 transition-transform duration-200"
+                                style={{
+                                  color: 'rgb(var(--text-secondary))',
+                                  transform: expandedSolutions.has(incident.id) ? 'rotate(180deg)' : 'rotate(0deg)'
+                                }}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                               </svg>
-                              <p className="text-xs font-semibold text-primary">Suggested Solution</p>
-                            </div>
-                            <div className="text-xs text-secondary max-h-32 overflow-y-auto" style={{ whiteSpace: 'pre-wrap' }}>
-                              {incident.solution}
-                            </div>
+                            </button>
+
+                            {expandedSolutions.has(incident.id) && (
+                              <div className="px-3 pb-3" style={{ borderTop: `1px solid rgb(var(--border-color))` }}>
+                                <div className="text-xs text-secondary max-h-32 overflow-y-auto mt-2" style={{ whiteSpace: 'pre-wrap' }}>
+                                  {incident.solution}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -259,13 +334,50 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                           </div>
                         )}
 
-                        {/* AI Agent Execution (for agent-resolved incidents) */}
+                        {/* SRE Agent Execution (for agent-resolved incidents) */}
                         {incident.actionable && incident.incidentType === 'real_system' && (
-                          <div className="rounded-lg p-3" style={{ backgroundColor: `rgb(var(--bg-secondary))`, border: `2px solid rgb(34, 197, 94)` }}>
-                            <div className="flex items-center gap-2 mb-3">
-                              <span className="text-sm">🤖</span>
-                              <p className="text-xs font-semibold text-primary">AI Agent Remediation</p>
-                            </div>
+                          <div className="rounded-lg" style={{ backgroundColor: `rgb(var(--bg-secondary))`, border: `2px solid rgb(34, 197, 94)` }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent clicking from closing the parent incident card
+                                setExpandedRemediations(prev => {
+                                  const newSet = new Set(prev);
+                                  if (newSet.has(incident.id)) {
+                                    newSet.delete(incident.id);
+                                  } else {
+                                    newSet.add(incident.id);
+                                  }
+                                  return newSet;
+                                });
+                              }}
+                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50"
+                              style={{ 
+                                backgroundColor: expandedRemediations.has(incident.id) ? 'rgba(34, 197, 94, 0.05)' : 'transparent'
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm">🤖</span>
+                                <p className="text-xs font-semibold text-primary">SRE Agent Remediation</p>
+                                <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(34, 197, 94, 0.2)', color: 'rgb(34, 197, 94)' }}>
+                                  ✓ Completed
+                                </span>
+                              </div>
+                              <svg 
+                                className="w-4 h-4 transition-transform duration-200" 
+                                style={{ 
+                                  color: 'rgb(var(--text-secondary))',
+                                  transform: expandedRemediations.has(incident.id) ? 'rotate(180deg)' : 'rotate(0deg)'
+                                }}
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+
+                            {expandedRemediations.has(incident.id) && (
+                              <div className="px-3 pb-3 pt-3"  style={{ borderTop: `1px solid rgb(var(--border-color))` }}>
 
                             {loadingExecutions.has(incident.id) ? (
                               <div className="flex items-center justify-center py-4">
@@ -275,9 +387,9 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                 </svg>
                               </div>
                             ) : agentExecutions.has(incident.id) && agentExecutions.get(incident.id)!.length > 0 ? (
-                              <div className="space-y-3">
+                              <div className="space-y-3 mt-2">
                                 {agentExecutions.get(incident.id)!.map((execution) => (
-                                  <div key={execution.id} className="space-y-2">
+                                  <div key={execution.id} className="space-y-3">
                                     {/* Status */}
                                     <div className="text-xs">
                                       <span className="text-tertiary">Status: </span>
@@ -342,20 +454,44 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                     {/* Verification */}
                                     {execution.verification_checks && Array.isArray(execution.verification_checks) && execution.verification_checks.length > 0 && (
                                       <div className="text-xs">
-                                        <span className="text-tertiary block mb-1">Verification:</span>
-                                        <div className="space-y-1">
+                                        <span className="text-tertiary block mb-2">Verification Checks:</span>
+                                        <div className="space-y-2">
                                           {execution.verification_checks.map((check: any, idx: number) => (
                                             <div 
                                               key={idx}
-                                              className="flex items-start gap-2 p-2 rounded"
-                                              style={{ backgroundColor: 'rgba(34, 197, 94, 0.05)' }}
+                                              className="p-2 rounded"
+                                              style={{ 
+                                                backgroundColor: check.passed ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                                                border: `1px solid ${check.passed ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
+                                              }}
                                             >
-                                              <span>{check.passed ? '✅' : '❌'}</span>
-                                              <div className="flex-1">
-                                                <div className="font-medium text-secondary">{check.name}</div>
-                                                {check.message && (
-                                                  <div className="text-tertiary text-xs mt-0.5">{check.message}</div>
-                                                )}
+                                              <div className="flex items-start gap-2">
+                                                <span className="text-sm">{check.passed ? '✓' : '✗'}</span>
+                                                <div className="flex-1">
+                                                  <div className="font-semibold" style={{ color: check.passed ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)' }}>
+                                                    {check.name}
+                                                  </div>
+                                                  {check.description && (
+                                                    <div className="text-tertiary mt-0.5" style={{ fontSize: '11px' }}>
+                                                      {check.description}
+                                                    </div>
+                                                  )}
+                                                  {check.expected && (
+                                                    <div className="mt-1 text-tertiary" style={{ fontSize: '11px' }}>
+                                                      <span className="font-medium">Expected:</span> {check.expected}
+                                                    </div>
+                                                  )}
+                                                  {check.actual && (
+                                                    <div className="mt-0.5" style={{ fontSize: '11px', color: check.passed ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)' }}>
+                                                      <span className="font-medium">Result:</span> {check.actual}
+                                                    </div>
+                                                  )}
+                                                  {check.message && (
+                                                    <div className="text-secondary mt-1" style={{ fontSize: '11px' }}>
+                                                      {check.message}
+                                                    </div>
+                                                  )}
+                                                </div>
                                               </div>
                                             </div>
                                           ))}
@@ -373,7 +509,7 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                 ))}
                               </div>
                             ) : (
-                              <div className="space-y-2">
+                              <div className="space-y-2 mt-2">
                                 <div className="text-xs">
                                   <span className="text-tertiary">Status: </span>
                                   <span className="font-medium text-green-600">Completed & Verified</span>
@@ -391,8 +527,10 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                   </div>
                                 )}
                                 <div className="text-xs text-secondary pt-1" style={{ borderTop: `1px solid rgb(var(--border-color))` }}>
-                                  This incident was automatically resolved by the AI agent through automated remediation actions.
+                                  This incident was automatically resolved by the SRE agent through automated remediation actions.
                                 </div>
+                              </div>
+                            )}
                               </div>
                             )}
                           </div>

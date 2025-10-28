@@ -79,13 +79,26 @@ func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExec
 		return
 	}
 
+	// Small delay to allow frontend to display "executing" state
+	time.Sleep(1 * time.Second)
+
 	// Phase 5: Verification
 	if err := s.phaseVerification(execution, incident); err != nil {
 		s.failExecution(execution, fmt.Sprintf("Verification phase failed: %v", err))
 		return
 	}
 
-	// Complete
+	// Small delay to allow frontend to display "verifying" state
+	time.Sleep(1 * time.Second)
+
+	// Check if verification passed - if not, mark as failed
+	if execution.VerificationPassed == nil || !*execution.VerificationPassed {
+		log.Printf("❌ [Agent] Verification failed - marking execution as failed")
+		s.failExecution(execution, "Verification checks failed. System did not return to healthy state.")
+		return
+	}
+
+	// Complete successfully
 	success := true
 	execution.Success = &success
 	execution.Status = models.StatusCompleted
@@ -93,7 +106,7 @@ func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExec
 	*execution.CompletedAt = time.Now()
 	db.DB.Save(execution)
 
-	// If remediation was successful and verification passed, resolve the incident
+	// Verification passed, resolve the incident
 	if execution.VerificationPassed != nil && *execution.VerificationPassed {
 		log.Printf("🎯 [Agent] Verification passed - marking incident as resolved")
 
@@ -196,6 +209,18 @@ Respond ONLY in valid JSON:
 		return fmt.Errorf("AI call failed: %w", err)
 	}
 
+	// Try to extract JSON from response (AI might return text + JSON)
+	jsonStart := strings.Index(response, "{")
+	jsonEnd := strings.LastIndex(response, "}")
+
+	if jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart {
+		log.Printf("❌ [Agent] Invalid AI response format (no JSON found): %s", response)
+		return fmt.Errorf("AI response does not contain valid JSON")
+	}
+
+	jsonResponse := response[jsonStart : jsonEnd+1]
+	log.Printf("🔍 [Agent] Extracted JSON: %s", jsonResponse)
+
 	// Parse response
 	var result struct {
 		Analysis          string `json:"analysis"`
@@ -203,7 +228,8 @@ Respond ONLY in valid JSON:
 		Reasoning         string `json:"reasoning"`
 	}
 
-	if err := json.Unmarshal([]byte(response), &result); err != nil {
+	if err := json.Unmarshal([]byte(jsonResponse), &result); err != nil {
+		log.Printf("❌ [Agent] Failed to parse JSON: %s", jsonResponse)
 		return fmt.Errorf("failed to parse AI response: %w", err)
 	}
 

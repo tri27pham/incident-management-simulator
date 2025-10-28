@@ -338,7 +338,7 @@ export function connectWebSocket(onMessage: (data: IncidentWithAnalysis) => void
   return ws;
 }
 
-// --- AI Agent Remediation API ---
+// --- SRE Agent Remediation API ---
 
 export interface AgentExecutionResponse {
   id: string;
