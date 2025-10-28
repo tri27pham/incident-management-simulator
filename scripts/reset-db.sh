@@ -44,6 +44,28 @@ fi
 if [ "$USING_DOCKER" = true ]; then
     echo "🔄 Resetting Docker container: $CONTAINER_NAME..."
     
+    # Clear all mock services FIRST to restore healthy state
+    echo "🧹 Restoring all mock services to healthy state..."
+    
+    # Clear Redis
+    echo "  • Clearing Redis memory..."
+    curl -X POST http://localhost:8002/clear/redis -s > /dev/null 2>&1 || echo "    ⚠️  Could not clear Redis"
+    
+    # Clear PostgreSQL connections
+    echo "  • Clearing PostgreSQL connections..."
+    curl -X POST http://localhost:8002/clear/postgres -s > /dev/null 2>&1 || echo "    ⚠️  Could not clear PostgreSQL"
+    
+    # Clear PostgreSQL bloat
+    echo "  • Clearing PostgreSQL bloat..."
+    curl -X POST http://localhost:8002/clear/postgres-bloat -s > /dev/null 2>&1 || echo "    ⚠️  Could not clear PostgreSQL bloat"
+    
+    # Clear disk space
+    echo "  • Clearing disk space..."
+    curl -X POST http://localhost:8002/clear/disk -s > /dev/null 2>&1 || echo "    ⚠️  Could not clear disk space"
+    
+    echo "   ✓ All mock services restored to healthy state"
+    sleep 1
+    
     # Stop ALL services to release database connections and prevent auto-creation
     echo "🛑 Stopping all service containers..."
     docker-compose stop backend health-monitor ai-diagnosis 2>/dev/null || true

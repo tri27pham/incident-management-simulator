@@ -3,9 +3,9 @@ package agent
 // SystemRegistry defines which systems are real and can be acted upon by AI agents
 type SystemInfo struct {
 	Name        string   `json:"name"`
-	Actionable  bool     `json:"actionable"`  // Can agents take actions on this system?
+	Actionable  bool     `json:"actionable"` // Can agents take actions on this system?
 	Description string   `json:"description"`
-	Actions     []string `json:"actions"`     // Available remediation actions
+	Actions     []string `json:"actions"` // Available remediation actions
 }
 
 // ActionableSystems is the registry of all systems in the platform
@@ -25,11 +25,17 @@ var ActionableSystems = map[string]SystemInfo{
 	},
 	"postgres-test": {
 		Name:        "postgres-test",
-		Actionable:  false, // Not yet implemented
-		Description: "Mock PostgreSQL instance (future)",
-		Actions:     []string{},
+		Actionable:  true,
+		Description: "Mock PostgreSQL instance for testing agent actions",
+		Actions:     []string{"kill_idle_connections", "vacuum_table", "restart"},
 	},
-	
+	"disk-monitor": {
+		Name:        "disk-monitor",
+		Actionable:  true,
+		Description: "Disk space monitoring and cleanup",
+		Actions:     []string{"cleanup_old_logs", "restart"},
+	},
+
 	// Synthetic systems from incident generator (NOT actionable)
 	"api-gateway": {
 		Name:        "api-gateway",
@@ -116,4 +122,3 @@ func GetAllActionableSystems() []SystemInfo {
 func RegisterSystem(info SystemInfo) {
 	ActionableSystems[info.Name] = info
 }
-

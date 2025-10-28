@@ -10,15 +10,15 @@ echo ""
 
 BACKEND_URL="http://localhost:8080/api/v1"
 
-# Step 1: Break Redis to create a real incident
-echo "📊 Step 1: Breaking Redis to create incident..."
-curl -s -X POST http://localhost:8002/break/redis > /dev/null
-echo "✅ Redis broken - incident should be created automatically"
+# Step 1: Trigger Redis memory failure to create a real incident
+echo "📊 Step 1: Triggering Redis memory failure..."
+curl -s -X POST http://localhost:8002/trigger/redis-memory > /dev/null
+echo "✅ Redis memory exhaustion triggered - incident should be created automatically"
 echo ""
 
 # Step 2: Wait for incident to be created
-echo "⏳ Waiting 3 seconds for incident creation..."
-sleep 3
+echo "⏳ Waiting 6 seconds for incident creation..."
+sleep 6
 echo ""
 
 # Step 3: Get the latest incident

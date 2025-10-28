@@ -107,6 +107,13 @@ else
     echo "⚠️  Redis Test:        STOPPED (AI agent features disabled)"
 fi
 
+# Check PostgreSQL Test
+if docker ps 2>/dev/null | grep -q postgres-test; then
+    echo "✅ PostgreSQL Test:   Running (Docker: postgres-test)"
+else
+    echo "⚠️  PostgreSQL Test:   STOPPED (AI agent features disabled)"
+fi
+
 # Check Health Monitor
 if docker ps 2>/dev/null | grep -q health-monitor; then
     if curl -s http://localhost:8002/health > /dev/null 2>&1; then
@@ -115,9 +122,23 @@ if docker ps 2>/dev/null | grep -q health-monitor; then
         # Check what services it's monitoring
         HEALTH_STATUS=$(curl -s http://localhost:8002/status 2>/dev/null)
         if [ ! -z "$HEALTH_STATUS" ]; then
-            REDIS_HEALTH=$(echo "$HEALTH_STATUS" | grep -o '"health":[0-9]*' | head -1 | cut -d: -f2)
-            if [ ! -z "$REDIS_HEALTH" ]; then
-                echo "   └─ Redis Health:   ${REDIS_HEALTH}%"
+            # Parse Redis health
+            REDIS_HEALTH=$(echo "$HEALTH_STATUS" | jq -r '.services["redis-test"].health' 2>/dev/null)
+            if [ ! -z "$REDIS_HEALTH" ] && [ "$REDIS_HEALTH" != "null" ]; then
+                echo "   └─ Redis:          ${REDIS_HEALTH}% health"
+            fi
+            
+            # Parse PostgreSQL health
+            PG_HEALTH=$(echo "$HEALTH_STATUS" | jq -r '.services["postgres-test"].health' 2>/dev/null)
+            if [ ! -z "$PG_HEALTH" ] && [ "$PG_HEALTH" != "null" ]; then
+                echo "   └─ PostgreSQL:     ${PG_HEALTH}% health"
+            fi
+            
+            # Parse Disk space health
+            DISK_HEALTH=$(echo "$HEALTH_STATUS" | jq -r '.services["disk-space"].health' 2>/dev/null)
+            if [ ! -z "$DISK_HEALTH" ] && [ "$DISK_HEALTH" != "null" ]; then
+                DISK_USED=$(echo "$HEALTH_STATUS" | jq -r '.services["disk-space"].used_percent' 2>/dev/null)
+                echo "   └─ Disk Space:     ${DISK_HEALTH}% health (${DISK_USED}% used)"
             fi
         fi
     else
