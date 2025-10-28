@@ -177,6 +177,7 @@ function App() {
   const [showResolvedPanel, setShowResolvedPanel] = useState(false);
   const [resolvedIncidents, setResolvedIncidents] = useState<Incident[]>([]);
   const [showFailureDropdown, setShowFailureDropdown] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number } | null>(null);
   const [isTriggeringFailure, setIsTriggeringFailure] = useState(false);
   const [progressBar, setProgressBar] = useState<{ show: boolean; message: string; progress: number } | null>(null);
   const [isFixingAll, setIsFixingAll] = useState(false);
@@ -334,18 +335,30 @@ function App() {
   };
 
   const handleSeverityToggle = (severity: IncidentSeverity) => {
+    // Close expanded card when filter changes
+    if (expandedCardId) {
+      setExpandedCardId(null);
+    }
     setSelectedSeverities((prev) =>
       prev.includes(severity) ? prev.filter((s) => s !== severity) : [...prev, severity]
     );
   };
 
   const handleTeamToggle = (team: string) => {
+    // Close expanded card when filter changes
+    if (expandedCardId) {
+      setExpandedCardId(null);
+    }
     setSelectedTeams((prev) =>
       prev.includes(team) ? prev.filter((t) => t !== team) : [...prev, team]
     );
   };
 
   const handleClearFilters = () => {
+    // Close expanded card when clearing filters
+    if (expandedCardId) {
+      setExpandedCardId(null);
+    }
     setSelectedSeverities([]);
     setSelectedTeams([]);
   };
@@ -1419,9 +1432,24 @@ function App() {
             </button>
 
             {/* Trigger Failure Dropdown */}
-            <div className="relative" ref={dropdownRef}>
+            <div className="relative" ref={dropdownRef} style={{ zIndex: 10000 }}>
               <button 
-                onClick={() => setShowFailureDropdown(!showFailureDropdown)}
+                onClick={() => {
+                  // ALWAYS close expanded card when clicking this button (opening or closing dropdown)
+                  if (expandedCardId) {
+                    setExpandedCardId(null);
+                  }
+                  
+                  // Toggle dropdown
+                  if (!showFailureDropdown && dropdownRef.current) {
+                    const rect = dropdownRef.current.getBoundingClientRect();
+                    setDropdownPosition({
+                      top: rect.bottom + 8,
+                      right: window.innerWidth - rect.right
+                    });
+                  }
+                  setShowFailureDropdown(!showFailureDropdown);
+                }}
                 disabled={isTriggeringFailure || isFixingAll}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
                 style={{
@@ -1462,15 +1490,22 @@ function App() {
               {/* Dropdown Menu */}
               {showFailureDropdown && (
                 <div 
-                  className="absolute top-full mt-2 right-0 rounded-lg shadow-lg border z-50 p-3"
+                  className="fixed rounded-lg shadow-lg border p-3"
                   style={{
                     backgroundColor: `rgb(var(--card-bg))`,
                     borderColor: `rgb(var(--border-color))`,
                     minWidth: '240px',
+                    zIndex: 999999, // Maximum z-index
+                    top: dropdownPosition ? `${dropdownPosition.top}px` : '60px',
+                    right: dropdownPosition ? `${dropdownPosition.right}px` : '20px',
                   }}
                 >
                   <button
-                    onClick={handleOverloadRedis}
+                    onClick={() => {
+                      handleOverloadRedis();
+                      // Close expanded card when triggering
+                      if (expandedCardId) setExpandedCardId(null);
+                    }}
                     disabled={redisMemoryPercent !== null && redisMemoryPercent > 90}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed"
                     style={{
@@ -1507,7 +1542,11 @@ function App() {
                   </button>
                   
                   <button
-                    onClick={handleTriggerPostgresConnections}
+                    onClick={() => {
+                      handleTriggerPostgresConnections();
+                      // Close expanded card when triggering
+                      if (expandedCardId) setExpandedCardId(null);
+                    }}
                     disabled={postgresIdleConnections !== null && postgresIdleConnections > 10}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
@@ -1544,7 +1583,11 @@ function App() {
                   </button>
                   
                   <button
-                    onClick={handleTriggerPostgresBloat}
+                    onClick={() => {
+                      handleTriggerPostgresBloat();
+                      // Close expanded card when triggering
+                      if (expandedCardId) setExpandedCardId(null);
+                    }}
                     disabled={isTriggeringFailure}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
@@ -1578,7 +1621,11 @@ function App() {
                   </button>
                   
                   <button
-                    onClick={handleTriggerDiskFull}
+                    onClick={() => {
+                      handleTriggerDiskFull();
+                      // Close expanded card when triggering
+                      if (expandedCardId) setExpandedCardId(null);
+                    }}
                     disabled={isTriggeringFailure}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
@@ -2137,6 +2184,8 @@ function App() {
             onSeverityToggle={handleSeverityToggle}
             onTeamToggle={handleTeamToggle}
             onClearFilters={handleClearFilters}
+            expandedCardId={expandedCardId}
+            onCloseExpandedCard={() => setExpandedCardId(null)}
           />
           
         <DragDropContext onDragEnd={onDragEnd}>
