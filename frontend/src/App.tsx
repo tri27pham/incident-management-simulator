@@ -185,6 +185,7 @@ function App() {
   const [progressBar, setProgressBar] = useState<{ show: boolean; message: string; progress: number } | null>(null);
   const [isFixingAll, setIsFixingAll] = useState(false);
   const blockWebSocketUpdatesRef = useRef(false);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
   const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
   const [postgresIdleConnections, setPostgresIdleConnections] = useState<number | null>(null);
   const [systemsHealth, setSystemsHealth] = useState<{
@@ -983,6 +984,10 @@ function App() {
             if (modalIncident?.id === id) {
               setModalIncident(null);
             }
+            
+            // Show success toast
+            setSuccessToast('Incident resolved');
+            setTimeout(() => setSuccessToast(null), 3000);
           }
         }
         
@@ -1097,14 +1102,17 @@ function App() {
             }, 1500);
           }
           
-          // Update modal if it's open for this incident (use ref to avoid reconnection)
-          if (modalIncidentRef.current?.id === incident.id) {
-            setModalIncident(incident);
-            console.log('🔄 Updated modal incident');
-          }
-          
           // If incident is resolved, move it to resolved list
           if (isResolved) {
+            // Close modal if it's open for this incident
+            if (modalIncidentRef.current?.id === incident.id) {
+              setModalIncident(null);
+              console.log('🔄 Closed modal for resolved incident');
+              
+              // Show success toast
+              setSuccessToast('Incident resolved');
+              setTimeout(() => setSuccessToast(null), 3000);
+            }
             console.log(`🎉 Incident ${incident.incidentNumber} resolved - moving to resolved panel`);
             
             // Remove from board
@@ -1144,6 +1152,12 @@ function App() {
             });
             
           } else {
+            // Update modal if it's open for this incident (only for non-resolved incidents)
+            if (modalIncidentRef.current?.id === incident.id) {
+              setModalIncident(incident);
+              console.log('🔄 Updated modal incident');
+            }
+            
             // Update the board with new/updated incident
             setBoard((prevBoard) => {
               const newBoard: IncidentBoardState = {
@@ -2235,6 +2249,24 @@ function App() {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Success Toast Notification */}
+      {successToast && (
+        <div 
+          className="fixed left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in"
+          style={{
+            backgroundColor: 'rgb(34, 197, 94)',
+            color: 'white',
+            zIndex: 100000,
+            top: '24px',
+          }}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="font-medium">{successToast}</span>
         </div>
       )}
     </div>
