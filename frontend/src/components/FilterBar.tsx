@@ -16,7 +16,7 @@ const severityOptions: { value: IncidentSeverity; label: string; color: string }
   { value: 'high', label: 'High', color: 'text-red-600' },
   { value: 'medium', label: 'Medium', color: 'text-orange-600' },
   { value: 'low', label: 'Low', color: 'text-yellow-600' },
-  { value: 'minor', label: 'Undiagnosed', color: 'text-gray-600' },
+  { value: 'minor', label: 'Undiagnosed', color: 'text-primary' },
 ];
 
 export function FilterBar({
@@ -69,7 +69,7 @@ export function FilterBar({
   return (
     <div className="flex items-center gap-2 mb-4">
       {/* Severity Dropdown */}
-      <div className="relative" ref={severityRef} style={{ zIndex: 10000 }}>
+      <div className="relative" ref={severityRef} style={{ zIndex: 40 }}>
         <button
           onClick={() => {
             // Close expanded card when opening dropdown
@@ -107,7 +107,7 @@ export function FilterBar({
           <div className="fixed w-56 rounded-lg shadow-lg" style={{
             backgroundColor: `rgb(var(--card-bg))`,
             border: `1px solid rgb(var(--border-color))`,
-            zIndex: 999999,
+            zIndex: 40,
             top: severityPosition ? `${severityPosition.top}px` : '60px',
             left: severityPosition ? `${severityPosition.left}px` : '20px',
           }}>
@@ -118,11 +118,20 @@ export function FilterBar({
                   <button
                     key={severity.value}
                     onClick={() => onSeverityToggle(severity.value)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-50 text-sm"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-colors"
+                    style={{
+                      backgroundColor: 'transparent'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 140, 0, 0.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
                   >
                     <span className={`${severity.color} font-medium`}>{severity.label}</span>
                     {isSelected && (
-                      <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" style={{ color: 'rgb(255, 140, 0)' }}>
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
@@ -135,7 +144,7 @@ export function FilterBar({
       </div>
 
       {/* Team Dropdown */}
-      <div className="relative" ref={teamRef} style={{ zIndex: 10000 }}>
+      <div className="relative" ref={teamRef} style={{ zIndex: 40 }}>
         <button
           onClick={() => {
             // Close expanded card when opening dropdown
@@ -173,7 +182,7 @@ export function FilterBar({
           <div className="fixed w-56 rounded-lg shadow-lg" style={{
             backgroundColor: `rgb(var(--card-bg))`,
             border: `1px solid rgb(var(--border-color))`,
-            zIndex: 999999,
+            zIndex: 40,
             top: teamPosition ? `${teamPosition.top}px` : '60px',
             left: teamPosition ? `${teamPosition.left}px` : '100px',
           }}>
@@ -184,11 +193,20 @@ export function FilterBar({
                   <button
                     key={team}
                     onClick={() => onTeamToggle(team)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-50 text-sm"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-colors"
+                    style={{
+                      backgroundColor: 'transparent'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 140, 0, 0.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
                   >
-                    <span className="font-medium" style={{ color: 'white' }}>{team}</span>
+                    <span className="font-medium text-primary">{team}</span>
                     {isSelected && (
-                      <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" style={{ color: 'rgb(255, 140, 0)' }}>
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
