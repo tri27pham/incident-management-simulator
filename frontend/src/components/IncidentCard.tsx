@@ -271,11 +271,15 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                 </span>
               )}
               {item.remediationMode === 'manual' && (
-                <span 
-                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
-                  title="Manual remediation required"
-                >
-                  👤
+                <span title="Manual remediation required">
+                  <svg 
+                    className="w-4 h-4 opacity-60 hover:opacity-100 transition-opacity"
+                    fill="none" 
+                    stroke="rgb(249, 115, 22)" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
                 </span>
               )}
             </div>

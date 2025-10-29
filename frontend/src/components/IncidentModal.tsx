@@ -10,6 +10,15 @@ interface IncidentModalProps {
   onStatusUpdate?: (id: string, newStatus: string) => void;
 }
 
+// Lock body scroll when modal is open
+const lockBodyScroll = () => {
+  document.body.style.overflow = 'hidden';
+};
+
+const unlockBodyScroll = () => {
+  document.body.style.overflow = '';
+};
+
 const severityConfig = {
   critical: { 
     label: 'Critical', 
@@ -97,6 +106,14 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
   const [hasUnsavedNotes, setHasUnsavedNotes] = useState(false);
   const [isDiagnosisExpanded, setIsDiagnosisExpanded] = useState(false);
   const [isSolutionExpanded, setIsSolutionExpanded] = useState(false);
+
+  // Lock body scroll when modal mounts, unlock when it unmounts
+  useEffect(() => {
+    lockBodyScroll();
+    return () => {
+      unlockBodyScroll();
+    };
+  }, []);
 
   // Get available status options (exclude current status, add Resolved for Fixing)
   const getAvailableStatuses = () => {
@@ -234,12 +251,16 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', overflow: 'hidden' }}
       onClick={onClose}
+      onWheel={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
     >
       <div 
         className="rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden"
-        style={{ backgroundColor: `rgb(var(--card-bg))` }}
+        style={{ backgroundColor: `rgb(var(--card-bg))`, overscrollBehavior: 'contain' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -301,7 +322,9 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                   className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
                   style={{ backgroundColor: 'rgb(234, 88, 12)', color: 'white' }}
                 >
-                  <span>👤</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
                   <span>Manual Only</span>
                 </span>
               )}
@@ -322,10 +345,16 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
         <div className="px-6 py-6 overflow-hidden" style={{ height: 'calc(90vh - 240px)' }}>
           <div className="grid grid-cols-2 gap-6 h-full overflow-hidden">
             {/* Left Column - Info */}
-            <div className="flex flex-col gap-4 min-h-0 overflow-y-auto" style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: 'rgb(var(--border-color)) transparent'
-            }}>
+            <div 
+              className="flex flex-col gap-4 min-h-0 overflow-y-auto pl-2 modal-scroll-pane" 
+              style={{
+                direction: 'rtl',
+                ['scrollbarWidth' as any]: 'thin',
+                ['scrollbarColor' as any]: '#f3f4f6 transparent',
+                overscrollBehavior: 'contain'
+              }}
+            >
+              <div style={{ direction: 'ltr' }} className="flex flex-col gap-4">
               <div className="rounded-lg p-4 space-y-3" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-secondary">Status</span>
@@ -362,10 +391,11 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
               {/* Status Timeline */}
               <div>
                 <h3 className="text-sm font-semibold mb-2 text-primary">Status Timeline</h3>
-                <div className="rounded-lg p-4" style={{ 
+                <div className="rounded-lg p-4 max-h-64 overflow-y-auto" style={{ 
                   backgroundColor: `rgb(var(--bg-tertiary))`,
                   borderColor: `rgb(var(--border-color))`,
-                  border: `1px solid rgb(var(--border-color))`
+                  border: `1px solid rgb(var(--border-color))`,
+                  overscrollBehavior: 'contain'
                 }}>
                   <div className="space-y-3 relative">
                     <div 
@@ -464,6 +494,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                     )}
                   </div>
                 </div>
+              </div>
               </div>
             </div>
 

@@ -61,16 +61,64 @@ export async function fetchResolvedIncidents(): Promise<BackendIncident[]> {
 }
 
 // Create a new incident
-export async function createIncident(incident: { message: string; source: string }): Promise<BackendIncident> {
+export async function createIncident(data: {
+  title: string;
+  description: string;
+  severity: string;
+  team: string;
+  affected_systems: string[];
+  impact: string;
+  status: string;
+} | { message: string; source: string }): Promise<BackendIncident> {
+  // Handle both new format (manual creation) and old format (for backwards compatibility)
+  const payload = 'title' in data ? {
+    message: data.title,
+    source: data.team,
+    status: data.status.toLowerCase(),
+    incident_type: 'real_system',
+    actionable: false,
+    affected_systems: data.affected_systems,
+    remediation_mode: 'manual',
+    metadata: {
+      description: data.description,
+      severity: data.severity,
+      impact: data.impact,
+      team: data.team,
+      created_by: 'manual',
+      manual_severity: data.severity, // Store original severity to prevent AI override
+    },
+  } : data;
+
   const response = await fetch(`${API_BASE_URL}/incidents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(incident),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error('Failed to create incident');
   }
-  return response.json();
+  
+  const incident = await response.json();
+  
+  // For manually created incidents, create an analysis with the manual severity
+  if ('title' in data) {
+    try {
+      await fetch(`${API_BASE_URL}/incidents/${incident.id}/analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          severity: data.severity,
+          diagnosis: data.description,
+          solution: data.impact || 'Manual incident - impact assessment needed',
+          confidence: 1.0,
+        }),
+      });
+    } catch (error) {
+      console.warn('Failed to create analysis for manual incident:', error);
+    }
+  }
+  
+  return incident;
 }
 
 // Update incident status
