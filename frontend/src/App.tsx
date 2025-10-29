@@ -1545,44 +1545,37 @@ function App() {
       )}
       
       {/* Header */}
-      <header className="px-6 py-4" style={{ 
-        backgroundColor: `rgb(var(--bg-secondary))`,
+      <header className="py-4" style={{ 
+        backgroundColor: `rgb(var(--bg-primary))`,
         borderBottom: `1px solid rgb(var(--border-color))`
       }}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: `rgb(var(--text-primary))` }}>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            <h1 className="text-xl font-semibold" style={{ color: `rgb(var(--text-primary))` }}>Home</h1>
-            {error && (
-              <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
-                {error}
-              </span>
-            )}
             <button
               onClick={() => setShowGuideModal(true)}
-              className="ml-2 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer flex items-center gap-2 font-medium text-sm"
+              className="px-6 py-2 rounded-lg transition-all duration-200 cursor-pointer flex items-center gap-2 font-medium text-sm"
               style={{
                 backgroundColor: 'rgb(249, 115, 22)',
                 color: 'white',
-                boxShadow: '0 4px 6px -1px rgba(249, 115, 22, 0.3), 0 2px 4px -1px rgba(249, 115, 22, 0.2)'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = 'rgb(234, 88, 12)';
-                e.currentTarget.style.transform = 'scale(1.05)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = 'rgb(249, 115, 22)';
-                e.currentTarget.style.transform = 'scale(1)';
               }}
               title="Guide & Info"
             >
               <svg className="w-5 h-5" fill="none" stroke="white" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Guide</span>
+              <span>GUIDE</span>
             </button>
+            {error && (
+              <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                {error}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -1881,7 +1874,7 @@ function App() {
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
-              className="group p-2 rounded-lg flex items-center gap-2 text-[rgb(var(--text-secondary))]"
+              className="group p-2 rounded-lg flex items-center gap-2 text-[rgb(var(--text-secondary))] cursor-pointer"
               title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
               {theme === 'light' ? (
@@ -1907,7 +1900,7 @@ function App() {
                 sessionStorage.removeItem('authenticated');
                 setIsAuthenticated(false);
               }}
-              className="group p-2 rounded-lg flex items-center gap-2 text-[rgb(var(--text-secondary))]"
+              className="group p-2 rounded-lg flex items-center gap-2 text-[rgb(var(--text-secondary))] cursor-pointer"
               title="Logout"
             >
               <svg className="w-5 h-5 transition-colors duration-75 group-hover:stroke-[rgb(239,68,68)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2588,10 +2581,13 @@ function App() {
                   <div>
                     <h4 className="font-semibold text-primary mb-2">2. Manage Incidents</h4>
                     <ul className="ml-4 space-y-1 text-secondary">
-                      <li>• Click on any incident card to view details</li>
-                      <li>• Use <strong>Get AI Diagnosis</strong> for instant analysis</li>
-                      <li>• Use <strong>Get AI Solution</strong> for recommended fixes</li>
-                      <li>• Change incident status by clicking the status dropdown</li>
+                      <li>• Click on any incident card to expand and view more details</li>
+                      <li>• Click the expand icon to open the full modal view</li>
+                      <li>• Use <strong>Get AI Diagnosis</strong> for instant analysis of the incident</li>
+                      <li>• Use <strong>Get AI Solution</strong> for recommended fixes with confidence scores</li>
+                      <li>• Change incident status using the <strong>Update Status</strong> dropdown</li>
+                      <li>• Change severity using the <strong>Change Severity</strong> dropdown</li>
+                      <li>• Assign incidents to different teams using <strong>Change Team</strong></li>
                       <li>• Add notes to track your investigation progress</li>
                     </ul>
                   </div>
@@ -2612,7 +2608,8 @@ function App() {
                     <ul className="ml-4 space-y-1 text-secondary">
                       <li>• Check the <strong>Systems Health</strong> section for real-time status</li>
                       <li>• Green = Healthy, Red = Critical issue detected</li>
-                      <li>• Use <strong>Reset All</strong> to restore systems to normal and clear resolved incidents</li>
+                      <li>• Use <strong>Reset All</strong> to restore mock systems and clear all incidents</li>
+                      <li>• View past incidents and their outcomes in the <strong>Resolved</strong> section</li>
                     </ul>
                   </div>
                 </div>
@@ -2659,19 +2656,23 @@ function App() {
                 <ul className="space-y-2 text-secondary">
                   <li className="flex items-start gap-2">
                     <span className="text-orange-500">→</span>
-                    <span>Use filters to focus on specific severity levels or teams</span>
+                    <span>Use filters (Severity, Team) to focus on specific types of incidents</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-orange-500">→</span>
-                    <span>Try triggering failures on mock systems to experience agent-based remediation</span>
+                    <span>Try triggering failures on mock systems to experience the full SRE agent remediation workflow</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-orange-500">→</span>
-                    <span>Add notes during investigation to simulate documenting your incident response</span>
+                    <span>Add notes during investigation to document your incident response process</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-orange-500">→</span>
-                    <span>Check the resolved panel to review past incidents and agent actions</span>
+                    <span>View the Resolved section to see agent remediation history and status timelines</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>AI diagnosis and solutions are powered by Groq (fast) with Gemini fallback (accurate)</span>
                   </li>
                 </ul>
               </section>
@@ -2711,7 +2712,7 @@ function App() {
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-orange-500 font-bold">2.</span>
-                        <span><strong>Action Selection:</strong> Chooses from pre-defined safe commands (FLUSHALL, VACUUM, cleanup scripts)</span>
+                        <span><strong>Action Selection:</strong> AI chooses from pre-defined safe commands (cache clear, connection kill, VACUUM, disk cleanup, service restart)</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-orange-500 font-bold">3.</span>
@@ -2744,7 +2745,7 @@ function App() {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-semibold text-primary text-sm">PostgreSQL</span>
                         </div>
-                        <p className="text-xs text-secondary">Table bloat from dead tuples → Fixed with `VACUUM FULL`</p>
+                        <p className="text-xs text-secondary">Idle connection exhaustion or table bloat → Fixed with connection cleanup or `VACUUM`</p>
                       </div>
                       <div className="p-3 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
                         <div className="flex items-center gap-2 mb-1">
