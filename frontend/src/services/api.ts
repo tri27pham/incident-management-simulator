@@ -13,6 +13,7 @@ export interface BackendIncident {
   message: string;
   source: string;
   status: 'triage' | 'investigating' | 'fixing' | 'resolved';
+  team?: string;
   generated_by?: string;
   notes?: string;
   created_at: string;
@@ -156,6 +157,19 @@ export async function updateIncidentSeverity(id: string, severity: string): Prom
   });
   if (!response.ok) {
     throw new Error('Failed to update incident severity');
+  }
+  return response.json();
+}
+
+// Update incident team
+export async function updateIncidentTeam(id: string, team: string): Promise<BackendIncident> {
+  const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ team }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update incident team');
   }
   return response.json();
 }

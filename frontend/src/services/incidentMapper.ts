@@ -39,11 +39,12 @@ export function mapBackendIncidentToFrontend(
     timeElapsed = `${diffMins}m`;
   }
   
-  // Extract team from source (e.g., "billing-service" -> "Billing")
-  const team = backendIncident.source
-    ? backendIncident.source.split('-')[0].charAt(0).toUpperCase() + 
-      backendIncident.source.split('-')[0].slice(1)
-    : 'Unknown';
+  // Use team from backend if available, otherwise extract from source
+  const team = backendIncident.team || 
+    (backendIncident.source
+      ? backendIncident.source.split('-')[0].charAt(0).toUpperCase() + 
+        backendIncident.source.split('-')[0].slice(1)
+      : 'Unknown');
   
   // Check for garbage patterns in text
   const hasGarbagePatterns = (text?: string) => {

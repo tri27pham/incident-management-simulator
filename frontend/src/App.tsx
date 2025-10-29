@@ -190,9 +190,11 @@ function App() {
   const blockWebSocketUpdatesRef = useRef(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [isToastFadingOut, setIsToastFadingOut] = useState(false);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [isErrorToastFadingOut, setIsErrorToastFadingOut] = useState(false);
   const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
 
-  // Helper function to show toast with fade-out animation
+  // Helper function to show success toast with fade-out animation
   const showSuccessToast = (message: string) => {
     setSuccessToast(message);
     setIsToastFadingOut(false);
@@ -207,6 +209,23 @@ function App() {
       setSuccessToast(null);
       setIsToastFadingOut(false);
     }, 2900);
+  };
+
+  // Helper function to show error toast with fade-out animation
+  const showErrorToast = (message: string) => {
+    setErrorToast(message);
+    setIsErrorToastFadingOut(false);
+    
+    // Start fade-out after 3 seconds
+    setTimeout(() => {
+      setIsErrorToastFadingOut(true);
+    }, 3000);
+    
+    // Clear toast after fade-out completes
+    setTimeout(() => {
+      setErrorToast(null);
+      setIsErrorToastFadingOut(false);
+    }, 3400);
   };
   const [postgresIdleConnections, setPostgresIdleConnections] = useState<number | null>(null);
   const [systemsHealth, setSystemsHealth] = useState<{
@@ -682,8 +701,7 @@ function App() {
       
     } catch (error) {
       console.error('Failed to trigger failure:', error);
-      setError('Failed to trigger failure');
-      setTimeout(() => setError(null), 3000);
+      showErrorToast('Failed to trigger Redis failure');
       setProgressBar(null);
       waitingForRedisIncident.current = false;
       if (progressIntervalRef.current) {
@@ -716,8 +734,28 @@ function App() {
         progress: 70 
       });
       
-      // Wait for incident to be created (5 seconds per health monitor)
-      await new Promise(resolve => setTimeout(resolve, 6000));
+      // Poll for incident creation (health monitor checks every 5 seconds)
+      const startTime = Date.now();
+      const maxWaitTime = 15000; // 15 seconds max
+      let incidentCreated = false;
+      const initialIncidentCount = board.Triage.items.length + board.Investigating.items.length + board.Fixing.items.length;
+      
+      while (!incidentCreated && (Date.now() - startTime) < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+        
+        const backendIncidents = await api.fetchIncidents();
+        const newIncidentCount = backendIncidents.length;
+        
+        // Check if a new incident was created
+        if (newIncidentCount > initialIncidentCount) {
+          incidentCreated = true;
+          break;
+        }
+      }
+      
+      if (!incidentCreated) {
+        throw new Error('Incident was not created - health monitor may not have detected the failure');
+      }
       
       setProgressBar({ 
         show: true, 
@@ -756,8 +794,7 @@ function App() {
       
     } catch (error) {
       console.error('Failed to trigger PostgreSQL failure:', error);
-      setError('Failed to trigger PostgreSQL failure');
-      setTimeout(() => setError(null), 3000);
+      showErrorToast(error instanceof Error ? error.message : 'Failed to trigger PostgreSQL failure');
       setProgressBar(null);
       blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
@@ -787,8 +824,28 @@ function App() {
         progress: 70 
       });
       
-      // Wait for incident to be created (5 seconds per health monitor)
-      await new Promise(resolve => setTimeout(resolve, 6000));
+      // Poll for incident creation (health monitor checks every 5 seconds)
+      const startTime = Date.now();
+      const maxWaitTime = 15000; // 15 seconds max
+      let incidentCreated = false;
+      const initialIncidentCount = board.Triage.items.length + board.Investigating.items.length + board.Fixing.items.length;
+      
+      while (!incidentCreated && (Date.now() - startTime) < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+        
+        const backendIncidents = await api.fetchIncidents();
+        const newIncidentCount = backendIncidents.length;
+        
+        // Check if a new incident was created
+        if (newIncidentCount > initialIncidentCount) {
+          incidentCreated = true;
+          break;
+        }
+      }
+      
+      if (!incidentCreated) {
+        throw new Error('Incident was not created - health monitor may not have detected the failure');
+      }
       
       setProgressBar({ 
         show: true, 
@@ -827,8 +884,7 @@ function App() {
       
     } catch (error) {
       console.error('Failed to trigger PostgreSQL bloat:', error);
-      setError('Failed to trigger PostgreSQL bloat');
-      setTimeout(() => setError(null), 3000);
+      showErrorToast(error instanceof Error ? error.message : 'Failed to trigger PostgreSQL bloat');
       setProgressBar(null);
       blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
@@ -858,8 +914,28 @@ function App() {
         progress: 70 
       });
       
-      // Wait for incident to be created (health monitor checks every 5 seconds)
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Poll for incident creation (health monitor checks every 5 seconds)
+      const startTime = Date.now();
+      const maxWaitTime = 15000; // 15 seconds max
+      let incidentCreated = false;
+      const initialIncidentCount = board.Triage.items.length + board.Investigating.items.length + board.Fixing.items.length;
+      
+      while (!incidentCreated && (Date.now() - startTime) < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+        
+        const backendIncidents = await api.fetchIncidents();
+        const newIncidentCount = backendIncidents.length;
+        
+        // Check if a new incident was created
+        if (newIncidentCount > initialIncidentCount) {
+          incidentCreated = true;
+          break;
+        }
+      }
+      
+      if (!incidentCreated) {
+        throw new Error('Incident was not created - health monitor may not have detected the failure');
+      }
       
       setProgressBar({ 
         show: true, 
@@ -898,8 +974,7 @@ function App() {
       
     } catch (error) {
       console.error('Failed to trigger disk full:', error);
-      setError('Failed to trigger disk full');
-      setTimeout(() => setError(null), 3000);
+      showErrorToast(error instanceof Error ? error.message : 'Failed to trigger disk space failure');
       setProgressBar(null);
       blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
@@ -948,7 +1023,7 @@ function App() {
     });
   };
 
-  const handleSolutionUpdate = (id: string, solution: string) => {
+  const handleSolutionUpdate = (id: string, solution: string, confidence?: number, solutionProvider?: 'gemini' | 'groq' | 'error' | 'unknown') => {
     setBoard((prevBoard) => {
       // Find and update the incident across all columns
       const newBoard = { ...prevBoard };
@@ -964,6 +1039,8 @@ function App() {
             ...updatedItems[itemIndex],
             solution,
             hasSolution: true,
+            ...(confidence !== undefined && { confidence }),
+            ...(solutionProvider && { solutionProvider }),
           };
           
           newBoard[columnKey as keyof typeof newBoard] = {
@@ -977,6 +1054,8 @@ function App() {
               ...modalIncident,
               solution,
               hasSolution: true,
+              ...(confidence !== undefined && { confidence }),
+              ...(solutionProvider && { solutionProvider }),
             });
           }
           
@@ -1802,31 +1881,22 @@ function App() {
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg transition-all duration-200 flex items-center gap-2 hover:bg-theme-button-hover"
-              style={{
-                color: `rgb(var(--text-secondary))`,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = `rgb(var(--accent-primary))`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = `rgb(var(--text-secondary))`;
-              }}
+              className="group p-2 rounded-lg flex items-center gap-2 text-[rgb(var(--text-secondary))]"
               title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
               {theme === 'light' ? (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 transition-colors duration-75 group-hover:stroke-[rgb(249,115,22)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                   </svg>
-                  <span className="text-xs">Light</span>
+                  <span className="text-xs transition-colors duration-75 group-hover:text-[rgb(249,115,22)]">Light</span>
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 transition-colors duration-75 group-hover:stroke-[rgb(249,115,22)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
-                  <span className="text-xs">Dark</span>
+                  <span className="text-xs transition-colors duration-75 group-hover:text-[rgb(249,115,22)]">Dark</span>
                 </>
               )}
             </button>
@@ -1837,22 +1907,13 @@ function App() {
                 sessionStorage.removeItem('authenticated');
                 setIsAuthenticated(false);
               }}
-              className="p-2 rounded-lg flex items-center gap-2 transition-colors duration-75"
-              style={{
-                color: `rgb(var(--text-secondary))`,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'rgb(239, 68, 68)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = `rgb(var(--text-secondary))`;
-              }}
+              className="group p-2 rounded-lg flex items-center gap-2 text-[rgb(var(--text-secondary))]"
               title="Logout"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 transition-colors duration-75 group-hover:stroke-[rgb(239,68,68)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
-              <span className="text-xs">Logout</span>
+              <span className="text-xs transition-colors duration-75 group-hover:text-[rgb(239,68,68)]">Logout</span>
             </button>
           </div>
         </div>
@@ -2706,6 +2767,20 @@ function App() {
               </section>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Error Toast */}
+      {errorToast && (
+        <div 
+          className="fixed bottom-8 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg text-white font-medium text-sm z-[100000]"
+          style={{
+            backgroundColor: 'rgb(239, 68, 68)',
+            opacity: isErrorToastFadingOut ? 0 : 1,
+            transition: 'opacity 0.4s ease-in-out',
+          }}
+        >
+          {errorToast}
         </div>
       )}
     </div>

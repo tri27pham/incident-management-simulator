@@ -67,6 +67,7 @@ type Incident struct {
 	Message     string    `json:"message" binding:"required"`
 	Source      string    `json:"source"`
 	Status      string    `json:"status" gorm:"default:triage"`
+	Team        string    `json:"team" gorm:"default:Platform"`
 	GeneratedBy string    `json:"generated_by" gorm:"default:manual"` // "gemini", "groq", "fallback", "manual"
 	Notes       string    `json:"notes" gorm:"type:text"`
 

@@ -202,6 +202,30 @@ func UpdateIncidentSeverity(id uuid.UUID, severity string) (*models.Incident, er
 	return &incident, nil
 }
 
+func UpdateIncidentTeam(id uuid.UUID, team string) (*models.Incident, error) {
+	var incident models.Incident
+	if err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error; err != nil {
+		return nil, err // Incident not found
+	}
+
+	// Update team
+	incident.Team = team
+	if err := db.DB.Save(&incident).Error; err != nil {
+		return nil, err
+	}
+
+	// Broadcast the update to all connected clients
+	BroadcastIncidentUpdate(id)
+	log.Printf("✅ Updated incident %s team to %s", incident.ID, team)
+
+	return &incident, nil
+}
+
 func UpdateIncidentStatus(id uuid.UUID, status string) (*models.Incident, error) {
 	var incident models.Incident
 	if err := db.DB.

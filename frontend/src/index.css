@@ -24,12 +24,12 @@
 [data-theme="dark"] {
   /* Dark Theme */
   --bg-primary: 15 15 15; /* Almost black #0f0f0f */
-  --bg-secondary: 28 28 28; /* Dark gray #1c1c1c */
+  --bg-secondary: 50 50 50; /* Even brighter dark gray #323232 */
   --bg-tertiary: 20 20 20; /* Very subtle, closer to bg-primary #141414 */
   --text-primary: 243 244 246; /* gray-100 - light text */
   --text-secondary: 209 213 219; /* gray-300 */
   --text-tertiary: 156 163 175; /* gray-400 */
-  --border-color: 48 48 48; /* Dark border #303030 */
+  --border-color: 70 70 70; /* Brighter dark border #464646 */
   --accent-primary: 249 115 22; /* orange-600 */
   --accent-secondary: 251 146 60; /* orange-400 */
   --accent-hover: 234 88 12; /* orange-700 */

@@ -548,12 +548,14 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
                       <button
                         onClick={() => handleApprove(execution.id)}
                         disabled={approvingId === execution.id}
-                        className="flex-1 py-1.5 px-3 rounded-lg font-medium transition-all text-sm"
+                        className="flex-1 py-1.5 px-3 rounded-lg font-medium text-sm"
                         style={{
                           backgroundColor: approvingId === execution.id ? 'rgb(107, 114, 128)' : 'rgb(34, 197, 94)',
                           color: 'white',
                           opacity: approvingId === execution.id ? 0.6 : 1,
                           cursor: approvingId === execution.id ? 'not-allowed' : 'pointer',
+                          transform: approvingId === execution.id ? 'scale(0.95)' : 'scale(1)',
+                          transition: 'all 0.15s ease-in-out',
                         }}
                       >
                         {approvingId === execution.id ? 'Approving...' : '✓ Approve & Execute'}

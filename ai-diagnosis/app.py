@@ -205,10 +205,17 @@ Provide 3-4 SHORT, actionable bullet points:
 
 One sentence per bullet. Use • symbol.
 
+Rate your confidence based on:
+- High confidence (0.85-0.95): Clear diagnosis with standard solutions
+- Medium confidence (0.70-0.84): Good understanding but some uncertainty
+- Low confidence (0.60-0.69): Multiple possible causes or complex issue
+
+IMPORTANT: confidence must be a number between 0.60 and 0.95. Do NOT use 0 or 0.0.
+
 Respond in JSON:
 {{
   "suggested_fix": "• [immediate action]\\n• [fix steps]\\n• [verification]",
-  "confidence": 0.0 to 1.0
+  "confidence": 0.75
 }}"""
     
     # Try with garbage detection
@@ -224,7 +231,7 @@ Respond in JSON:
             else:
                 return SuggestedFixResponse(
                     suggested_fix="AI service returned invalid response. Please try again.",
-                    confidence=0.0,
+                    confidence=0.50,
                     provider="error"
                 )
         
@@ -235,10 +242,19 @@ Respond in JSON:
             
             # Check if there's an error from AI services
             if "error" in parsed:
-                return SuggestedFixResponse(suggested_fix=parsed["error"], confidence=0.0, provider="error")
+                return SuggestedFixResponse(suggested_fix=parsed["error"], confidence=0.50, provider="error")
             
-            confidence = float(parsed.get("confidence", 0.7))
-            confidence = max(0.0, min(confidence, 1.0))
+            confidence = float(parsed.get("confidence", 0.75))
+            print(f"🔍 Raw confidence from AI: {confidence}")
+            
+            # If AI returns 0 or very low, default to 0.60 (minimum realistic)
+            if confidence <= 0.05:
+                print(f"⚠️  AI returned very low confidence ({confidence}), defaulting to 0.60")
+                confidence = 0.60
+            
+            # Clamp confidence to realistic range (60% - 95%)
+            confidence = max(0.60, min(confidence, 0.95))
+            print(f"✅ Final confidence: {confidence}")
             
             solution_text = parsed.get("suggested_fix", cleaned_raw)
             
@@ -258,7 +274,7 @@ Respond in JSON:
     # Final fallback
     return SuggestedFixResponse(
         suggested_fix="Unable to generate solution. Please try again.",
-        confidence=0.0,
+        confidence=0.50,
         provider="error"
     )
 
@@ -421,8 +437,8 @@ def agent_think(req: AgentThinkRequest):
                 completion = groq_client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": req.prompt}],
-                    temperature=0.3,
-                    max_tokens=1000
+                    temperature=0.5,  # Increased for more varied decision-making
+                    max_tokens=1500  # Increased for detailed reasoning
                 )
                 response_text = completion.choices[0].message.content.strip()
                 cleaned = clean_json_string(response_text)
@@ -437,7 +453,7 @@ def agent_think(req: AgentThinkRequest):
                 response = gemini_client.models.generate_content(
                     model="gemini-2.5-flash",
                     contents=req.prompt,
-                    config={"temperature": 0.3}
+                    config={"temperature": 0.5}  # Increased for more varied decision-making
                 )
                 response_text = response.text.strip()
                 cleaned = clean_json_string(response_text)

@@ -6,7 +6,7 @@ import AgentWorkflow from './AgentWorkflow';
 interface IncidentModalProps {
   incident: Incident;
   onClose: () => void;
-  onSolutionUpdate: (id: string, solution: string) => void;
+  onSolutionUpdate: (id: string, solution: string, confidence?: number, solutionProvider?: 'gemini' | 'groq' | 'error' | 'unknown') => void;
   onStatusUpdate?: (id: string, newStatus: string) => void;
   onShowSuccessToast?: (message: string) => void;
 }
@@ -82,8 +82,10 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
   const [solutionError, setSolutionError] = useState<string | null>(null);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showSeverityDropdown, setShowSeverityDropdown] = useState(false);
+  const [showTeamDropdown, setShowTeamDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const severityDropdownRef = useRef<HTMLDivElement>(null);
+  const teamDropdownRef = useRef<HTMLDivElement>(null);
   const [notes, setNotes] = useState(incident.notes || '');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
@@ -196,6 +198,21 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
     }
   }, [showSeverityDropdown]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (teamDropdownRef.current && !teamDropdownRef.current.contains(event.target as Node)) {
+        setShowTeamDropdown(false);
+      }
+    };
+
+    if (showTeamDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showTeamDropdown]);
+
   const handleStatusChange = async (newStatus: string) => {
     setShowStatusDropdown(false);
     
@@ -241,6 +258,19 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
       }
     } catch (error) {
       console.error('Failed to update severity:', error);
+    }
+  };
+
+  const handleTeamChange = async (newTeam: string) => {
+    setShowTeamDropdown(false);
+    try {
+      const { updateIncidentTeam } = await import('../services/api');
+      await updateIncidentTeam(incident.id, newTeam);
+      if (onShowSuccessToast) {
+        onShowSuccessToast('Team updated');
+      }
+    } catch (error) {
+      console.error('Failed to update team:', error);
     }
   };
 
@@ -293,7 +323,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
       if (isErrorMessage) {
         setSolutionError(analysis.solution);
       } else if (analysis.solution && analysis.solution.length > 10) {
-        onSolutionUpdate(incident.id, analysis.solution);
+        onSolutionUpdate(incident.id, analysis.solution, analysis.confidence, analysis.solution_provider as 'gemini' | 'groq' | 'error' | 'unknown');
       } else {
         setSolutionError('Failed to get solution. Please try again.');
       }
@@ -342,6 +372,14 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                   <span>{severity.label}</span>
                 </span>
               )}
+              {/* Team tag */}
+              <span 
+                className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                style={{ backgroundColor: 'rgba(249, 115, 22, 0.1)', color: 'rgb(249, 115, 22)', border: '1px solid rgb(249, 115, 22)' }}
+              >
+                <span className="text-current">⬢⬢</span>
+                <span>{incident.team}</span>
+              </span>
               {/* Agent classification badges - full labels */}
               {incident.actionable && incident.incidentType === 'real_system' && (
                 <span 
@@ -412,44 +450,12 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                 overscrollBehavior: 'contain'
               }}
             >
-              <div style={{ direction: 'ltr' }} className="flex flex-col gap-4">
-              <div className="rounded-lg p-4 space-y-3" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-secondary">Status</span>
-                  <span className={`text-sm font-medium px-2 py-1 rounded ${
-                    incident.status === 'Triage' ? 'bg-blue-100 text-blue-800' :
-                    incident.status === 'Investigating' ? 'bg-orange-100 text-orange-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {incident.status}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-secondary">Team</span>
-                  <span className="text-sm font-medium text-primary flex items-center gap-1">
-                    <span className="text-tertiary">⬢⬢</span>
-                    {incident.team}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-secondary">Severity</span>
-                  <span className="text-sm font-medium text-primary flex items-center gap-1">
-                    {severity && severity.label}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-secondary">Generated By</span>
-                  <span className="text-sm font-medium text-primary">{incident.generated_by || 'manual'}</span>
-                </div>
-              </div>
+              <div style={{ direction: 'ltr' }} className="flex flex-col gap-4 h-full">
 
               {/* Status Timeline */}
-              <div>
+              <div className="flex flex-col flex-1 min-h-0">
                 <h3 className="text-sm font-semibold mb-2 text-primary">Status Timeline</h3>
-                <div className="rounded-lg p-4 max-h-64 overflow-y-auto" style={{ 
+                <div className="rounded-lg p-4 flex-1 overflow-y-auto" style={{ 
                   backgroundColor: `rgb(var(--bg-tertiary))`,
                   borderColor: `rgb(var(--border-color))`,
                   border: `1px solid rgb(var(--border-color))`,
@@ -493,9 +499,9 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
               </div>
 
               {/* Notes Section */}
-              <div>
+              <div className="flex flex-col flex-1 min-h-0">
                 <h3 className="text-sm font-semibold mb-2 text-primary">Notes</h3>
-                <div className="rounded-lg p-4" style={{ 
+                <div className="rounded-lg p-4 flex flex-col flex-1" style={{ 
                   backgroundColor: `rgb(var(--bg-tertiary))`,
                   borderColor: `rgb(var(--border-color))`,
                   border: `1px solid rgb(var(--border-color))`
@@ -504,9 +510,8 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                     value={notes}
                     onChange={handleNotesChange}
                     placeholder="Add notes about this incident..."
-                    className="w-full bg-transparent resize-none text-sm text-primary placeholder-tertiary focus:outline-none mb-3"
+                    className="w-full bg-transparent resize-none text-sm text-primary placeholder-tertiary focus:outline-none mb-3 flex-1"
                     style={{
-                      minHeight: '120px',
                       scrollbarWidth: 'thin',
                       scrollbarColor: 'rgb(var(--border-color)) transparent'
                     }}
@@ -514,12 +519,12 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                   <div className="flex items-center justify-between">
                     <button
                       onClick={handleSaveNotes}
-                      disabled={!hasUnsavedNotes || isSavingNotes}
+                      disabled={!hasUnsavedNotes || isSavingNotes || notes.trim() === ''}
                       className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       style={{
-                        backgroundColor: hasUnsavedNotes ? 'rgb(249, 115, 22)' : `rgb(var(--bg-secondary))`,
-                        color: hasUnsavedNotes ? 'white' : `rgb(var(--text-secondary))`,
-                        border: `1px solid ${hasUnsavedNotes ? 'rgb(249, 115, 22)' : 'rgb(var(--border-color))'}`,
+                        backgroundColor: hasUnsavedNotes && notes.trim() !== '' ? 'rgb(249, 115, 22)' : `rgb(var(--bg-secondary))`,
+                        color: hasUnsavedNotes && notes.trim() !== '' ? 'white' : `rgb(var(--text-secondary))`,
+                        border: `1px solid ${hasUnsavedNotes && notes.trim() !== '' ? 'rgb(249, 115, 22)' : 'rgb(var(--border-color))'}`,
                       }}
                     >
                       {isSavingNotes ? (
@@ -590,26 +595,29 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div className="flex-1 flex items-center justify-between">
+                      <h3 className="diagnosis-title text-sm font-semibold">AI Diagnosis</h3>
                       <div className="flex items-center gap-2">
-                        <h3 className="diagnosis-title text-sm font-semibold">AI Diagnosis</h3>
                         {incident.diagnosisProvider && incident.diagnosisProvider !== 'unknown' && incident.diagnosisProvider !== 'error' && (
                           <span 
                             className="text-[10px] pl-1.5 pr-2 py-0.5 rounded font-semibold"
-                            style={{ backgroundColor: 'rgb(var(--bg-tertiary))', color: 'white' }}
+                            style={{ 
+                              backgroundColor: incident.diagnosisProvider === 'gemini' ? 'rgb(var(--bg-tertiary))' : 'rgb(75, 85, 99)',
+                              color: 'white'
+                            }}
                             title={`Generated by ${incident.diagnosisProvider === 'gemini' ? 'Gemini AI' : 'Groq AI'}`}
                           >
-                            {incident.diagnosisProvider === 'gemini' ? '✨ Gemini' : '⚡ Groq'}
+                            {incident.diagnosisProvider === 'gemini' ? '✨ Gemini' : 'GROQ'}
                           </span>
                         )}
+                        <svg 
+                          className={`w-4 h-4 transition-transform ${isDiagnosisExpanded ? 'rotate-180' : ''}`}
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
                       </div>
-                      <svg 
-                        className={`w-4 h-4 transition-transform ${isDiagnosisExpanded ? 'rotate-180' : ''}`}
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
                     </div>
                   </button>
                   {isDiagnosisExpanded && (
@@ -643,29 +651,34 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                       <div className="flex-1 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <h4 className="solution-title text-sm font-semibold">Suggested Solution</h4>
-                          {incident.solutionProvider && incident.solutionProvider !== 'unknown' && incident.solutionProvider !== 'error' && (
-                            <span 
-                              className="text-[10px] pl-1.5 pr-2 py-0.5 rounded font-semibold"
-                              style={{ backgroundColor: 'rgb(var(--bg-tertiary))', color: 'white' }}
-                              title={`Generated by ${incident.solutionProvider === 'gemini' ? 'Gemini AI' : 'Groq AI'}`}
-                            >
-                              {incident.solutionProvider === 'gemini' ? '✨ Gemini' : '⚡ Groq'}
-                            </span>
-                          )}
                           {incident.confidence !== undefined && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold border" style={{ borderColor: 'rgb(249, 115, 22)', color: 'rgb(249, 115, 22)', backgroundColor: 'transparent' }}>
                               {(incident.confidence * 100).toFixed(0)}% confidence
                             </span>
                           )}
                         </div>
-                        <svg 
-                          className={`w-4 h-4 transition-transform ${isSolutionExpanded ? 'rotate-180' : ''}`}
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
+                        <div className="flex items-center gap-2">
+                          {incident.solutionProvider && incident.solutionProvider !== 'unknown' && incident.solutionProvider !== 'error' && (
+                            <span 
+                              className="text-[10px] pl-1.5 pr-2 py-0.5 rounded font-semibold"
+                              style={{ 
+                                backgroundColor: incident.solutionProvider === 'gemini' ? 'rgb(var(--bg-tertiary))' : 'rgb(75, 85, 99)',
+                                color: 'white'
+                              }}
+                              title={`Generated by ${incident.solutionProvider === 'gemini' ? 'Gemini AI' : 'Groq AI'}`}
+                            >
+                              {incident.solutionProvider === 'gemini' ? '✨ Gemini' : 'GROQ'}
+                            </span>
+                          )}
+                          <svg 
+                            className={`w-4 h-4 transition-transform ${isSolutionExpanded ? 'rotate-180' : ''}`}
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
                       </div>
                     </button>
                     {isSolutionExpanded && (
@@ -725,14 +738,14 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                     <h3 className="text-sm font-semibold text-primary">SRE Agent Remediation</h3>
                     <span 
                       className="px-2 py-0.5 rounded text-xs font-medium"
-                      style={{ 
+                                style={{ 
                         border: '1px solid rgb(34, 197, 94)',
                         color: 'rgb(34, 197, 94)',
                         backgroundColor: 'transparent'
                       }}
                     >
                       Automated
-                    </span>
+                      </span>
                   </div>
                   <AgentWorkflow 
                     incidentId={incident.id} 
@@ -797,10 +810,10 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                       const isInvestigating = status === 'Investigating';
                       const isFixing = status === 'Fixing';
                       
-                      const hoverBg = isTriage ? 'rgba(59, 130, 246, 0.15)' : 
-                                     isInvestigating ? 'rgba(249, 115, 22, 0.15)' : 
-                                     isFixing ? 'rgba(239, 68, 68, 0.15)' : 
-                                     isResolved ? 'rgba(16, 185, 129, 0.15)' : 'transparent';
+                      const hoverBg = isTriage ? 'rgba(59, 130, 246, 0.30)' : 
+                                     isInvestigating ? 'rgba(249, 115, 22, 0.30)' : 
+                                     isFixing ? 'rgba(239, 68, 68, 0.30)' : 
+                                     isResolved ? 'rgba(16, 185, 129, 0.30)' : 'transparent';
                       
                       return (
                         <button
@@ -828,7 +841,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
               
               {/* Change Severity Dropdown */}
               <div className="relative" ref={severityDropdownRef}>
-                <button 
+              <button 
                   onClick={() => !isResolved && setShowSeverityDropdown(!showSeverityDropdown)}
                   disabled={isResolved}
                   className="px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -863,17 +876,17 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                 {showSeverityDropdown && (
                   <div 
                     className="absolute bottom-full left-0 mb-2 rounded-lg shadow-lg border overflow-hidden z-50"
-                    style={{
-                      backgroundColor: `rgb(var(--bg-secondary))`,
-                      borderColor: `rgb(var(--border-color))`,
+                style={{
+                  backgroundColor: `rgb(var(--bg-secondary))`,
+                  borderColor: `rgb(var(--border-color))`,
                       minWidth: '180px'
                     }}
                   >
                     {Object.entries(severityConfig).map(([key, config]) => {
                       if (key === incident.severity) return null; // Skip current severity
                       
-                      // Convert the solid color to rgba with 15% opacity for hover
-                      const hoverBg = config.hoverColor.replace('rgb', 'rgba').replace(')', ', 0.15)');
+                      // Convert the solid color to rgba with 30% opacity for hover
+                      const hoverBg = config.hoverColor.replace('rgb', 'rgba').replace(')', ', 0.30)');
                       
                       return (
                         <button
@@ -892,6 +905,74 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                         >
                           {config.icon}
                           <span>{config.label}</span>
+              </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Change Team Dropdown */}
+              <div className="relative" ref={teamDropdownRef}>
+                <button 
+                  onClick={() => !isResolved && setShowTeamDropdown(!showTeamDropdown)}
+                  disabled={isResolved}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: `rgb(var(--accent-primary))`,
+                    color: 'white',
+                    cursor: isResolved ? 'not-allowed' : 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isResolved) {
+                      e.currentTarget.style.backgroundColor = `rgb(var(--accent-hover))`;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isResolved) {
+                      e.currentTarget.style.backgroundColor = `rgb(var(--accent-primary))`;
+                    }
+                  }}
+                >
+                  Change Team
+                  <svg 
+                    className={`w-4 h-4 transition-transform ${showTeamDropdown ? 'rotate-180' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {showTeamDropdown && (
+                  <div 
+                    className="absolute bottom-full left-0 mb-2 rounded-lg shadow-lg border overflow-hidden z-50"
+                    style={{
+                      backgroundColor: `rgb(var(--bg-secondary))`,
+                      borderColor: `rgb(var(--border-color))`,
+                      minWidth: '180px'
+                    }}
+                  >
+                    {['Platform', 'Frontend', 'Backend', 'Data', 'Infrastructure'].map((team) => {
+                      const hoverBg = 'rgba(249, 115, 22, 0.30)';
+                      return (
+                        <button
+                          key={team}
+                          onClick={() => handleTeamChange(team)}
+                          className="w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2.5 text-primary cursor-pointer"
+                          style={{
+                            backgroundColor: 'transparent',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = hoverBg;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                          }}
+                        >
+                          <span className="text-current">⬢⬢</span>
+                          <span>{team}</span>
                         </button>
                       );
                     })}
@@ -920,28 +1001,22 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start gap-4">
-              <div 
-                className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center"
-                style={{
-                  backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                }}
-              >
-                <svg className="w-6 h-6" fill="none" stroke="rgb(34, 197, 94)" viewBox="0 0 24 24">
+            <div>
+              <h3 className="text-lg font-semibold text-primary mb-2 flex items-center gap-2">
+                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="rgb(34, 197, 94)" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-primary mb-2">
-                  Mark as Resolved?
-                </h3>
+                <span>Mark as Resolved?</span>
+              </h3>
+              <div>
+                
                 <p className="text-sm text-secondary mb-4">
                   This will move the incident to the resolved incidents panel. Are you sure you want to continue?
                 </p>
-                <div className="flex gap-3 justify-end">
+                <div className="flex gap-2 justify-end">
                   <button
                     onClick={cancelResolve}
-                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
                     style={{
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       color: `rgb(var(--text-primary))`,
@@ -958,7 +1033,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                   </button>
                   <button
                     onClick={confirmResolve}
-                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
                     style={{
                       backgroundColor: 'rgb(34, 197, 94)',
                       color: 'white',

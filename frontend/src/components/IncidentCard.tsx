@@ -57,7 +57,7 @@ interface IncidentCardProps {
   onToggleExpand: (id: string) => void;
   onOpenModal: (incident: Incident) => void;
   onDiagnosisUpdate: (id: string, diagnosis: string) => void;
-  onSolutionUpdate: (id: string, solution: string) => void;
+  onSolutionUpdate: (id: string, solution: string, confidence?: number, solutionProvider?: 'gemini' | 'groq' | 'error' | 'unknown') => void;
 }
 
 export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenModal, onDiagnosisUpdate, onSolutionUpdate }: IncidentCardProps) {
@@ -183,7 +183,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
       if (isErrorMessage) {
         setSolutionError(analysis.solution);
       } else if (analysis.solution && analysis.solution.length > 10) {
-        onSolutionUpdate(item.id, analysis.solution);
+        onSolutionUpdate(item.id, analysis.solution, analysis.confidence, analysis.solution_provider as 'gemini' | 'groq' | 'error' | 'unknown');
       } else {
         setSolutionError('Failed to get solution. Please try again.');
       }
@@ -442,13 +442,13 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                   onClick={handleModalOpen}
                   className="modal-trigger p-1.5 rounded transition-colors cursor-pointer"
                   style={{
-                    backgroundColor: `rgb(var(--bg-secondary))`,
+                    backgroundColor: 'transparent',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = `rgb(var(--bg-tertiary))`;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
+                    e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                   title="Expand to full view"
                 >
