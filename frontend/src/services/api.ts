@@ -147,6 +147,19 @@ export async function updateIncidentNotes(id: string, notes: string): Promise<Ba
   return response.json();
 }
 
+// Update incident severity
+export async function updateIncidentSeverity(id: string, severity: string): Promise<BackendIncident> {
+  const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ severity }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update incident severity');
+  }
+  return response.json();
+}
+
 // Trigger AI diagnosis
 export async function triggerDiagnosis(id: string): Promise<IncidentAnalysis> {
   const response = await fetch(`${API_BASE_URL}/incidents/${id}/diagnose`, {

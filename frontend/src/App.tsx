@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { DragDropContext, DropResult } from 'react-beautiful-dnd';
-import { IncidentBoardState, Incident, IncidentSeverity } from './types';
+import { IncidentBoardState, Incident, IncidentSeverity, IncidentStatus } from './types';
 import { IncidentColumn } from './components/IncidentColumn';
 import { IncidentModal } from './components/IncidentModal';
 import { FilterBar } from './components/FilterBar';
@@ -181,6 +181,7 @@ function App() {
   const [showResolvedPanel, setShowResolvedPanel] = useState(false);
   const [resolvedIncidents, setResolvedIncidents] = useState<Incident[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
   const [showFailureDropdown, setShowFailureDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number } | null>(null);
   const [isTriggeringFailure, setIsTriggeringFailure] = useState(false);
@@ -188,7 +189,25 @@ function App() {
   const [isFixingAll, setIsFixingAll] = useState(false);
   const blockWebSocketUpdatesRef = useRef(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [isToastFadingOut, setIsToastFadingOut] = useState(false);
   const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
+
+  // Helper function to show toast with fade-out animation
+  const showSuccessToast = (message: string) => {
+    setSuccessToast(message);
+    setIsToastFadingOut(false);
+    
+    // Start fade-out after 2.5 seconds
+    setTimeout(() => {
+      setIsToastFadingOut(true);
+    }, 2500);
+    
+    // Clear toast after fade-out completes
+    setTimeout(() => {
+      setSuccessToast(null);
+      setIsToastFadingOut(false);
+    }, 2900);
+  };
   const [postgresIdleConnections, setPostgresIdleConnections] = useState<number | null>(null);
   const [systemsHealth, setSystemsHealth] = useState<{
     'redis-test': {
@@ -239,18 +258,19 @@ function App() {
 
   // Lock body scroll when modal or resolved panel is open
   useEffect(() => {
-    if (modalIncident || showResolvedPanel) {
-      // Save original overflow value
-      const originalOverflow = document.body.style.overflow;
+    if (modalIncident || showResolvedPanel || showGuideModal) {
       // Lock scroll
       document.body.style.overflow = 'hidden';
       
-      // Cleanup: restore original overflow when modal/panel closes
+      // Cleanup: always restore scroll when modal/panel closes
       return () => {
-        document.body.style.overflow = originalOverflow;
+        document.body.style.overflow = '';
       };
+    } else {
+      // Ensure scroll is unlocked when nothing is open
+      document.body.style.overflow = '';
     }
-  }, [modalIncident, showResolvedPanel]);
+  }, [modalIncident, showResolvedPanel, showGuideModal]);
 
   // Close dropdown when clicking outside and fetch Redis status when opening
   useEffect(() => {
@@ -339,6 +359,20 @@ function App() {
 
   const handleCloseModal = () => {
     setModalIncident(null);
+  };
+
+  // Helper function to check if a system has any active incidents
+  const hasActiveIncident = (systemName: string): boolean => {
+    const allIncidents = [
+      ...board.Triage.items,
+      ...board.Investigating.items,
+      ...board.Fixing.items,
+    ];
+    return allIncidents.some(incident => 
+      incident.affectedServices?.some(service => 
+        service.toLowerCase().includes(systemName.toLowerCase())
+      )
+    );
   };
 
   const handleSeverityToggle = (severity: IncidentSeverity) => {
@@ -612,7 +646,10 @@ function App() {
               backendIncidents.forEach((backendIncident) => {
                 const incident = mapBackendIncidentToFrontend(backendIncident);
                 const status = mapBackendStatusToFrontend(backendIncident.status);
-                newBoard[status].items.push(incident);
+                // Only add to board if status is a valid board column (not Resolved)
+                if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+                  newBoard[status as IncidentStatus].items.push(incident);
+                }
               });
 
               const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
@@ -703,7 +740,10 @@ function App() {
       backendIncidents.forEach((backendIncident) => {
         const incident = mapBackendIncidentToFrontend(backendIncident);
         const status = mapBackendStatusToFrontend(backendIncident.status);
-        newBoard[status].items.push(incident);
+        // Only add to board if status is a valid board column (not Resolved)
+        if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+          newBoard[status as IncidentStatus].items.push(incident);
+        }
       });
 
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
@@ -771,7 +811,10 @@ function App() {
       backendIncidents.forEach((backendIncident) => {
         const incident = mapBackendIncidentToFrontend(backendIncident);
         const status = mapBackendStatusToFrontend(backendIncident.status);
-        newBoard[status].items.push(incident);
+        // Only add to board if status is a valid board column (not Resolved)
+        if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+          newBoard[status as IncidentStatus].items.push(incident);
+        }
       });
 
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
@@ -839,7 +882,10 @@ function App() {
       backendIncidents.forEach((backendIncident) => {
         const incident = mapBackendIncidentToFrontend(backendIncident);
         const status = mapBackendStatusToFrontend(backendIncident.status);
-        newBoard[status].items.push(incident);
+        // Only add to board if status is a valid board column (not Resolved)
+        if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+          newBoard[status as IncidentStatus].items.push(incident);
+        }
       });
 
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
@@ -1002,14 +1048,11 @@ function App() {
             // For immediate UI update, add to resolved list
             setResolvedIncidents((prev) => [incident, ...prev]);
             
-            // Close modal if incident is resolved
+            // Show success toast but DON'T close modal (let user review the resolution)
             if (modalIncident?.id === id) {
-              setModalIncident(null);
+              showSuccessToast('Incident resolved');
+              console.log('✅ Incident manually resolved - modal remains open for user review');
             }
-            
-            // Show success toast
-            setSuccessToast('Incident resolved');
-            setTimeout(() => setSuccessToast(null), 3000);
           }
         }
         
@@ -1043,7 +1086,10 @@ function App() {
         backendIncidents.forEach((backendIncident) => {
           const incident = mapBackendIncidentToFrontend(backendIncident);
           const status = mapBackendStatusToFrontend(backendIncident.status);
-          newBoard[status].items.push(incident);
+          // Only add to board if status is a valid board column (not Resolved)
+          if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+            newBoard[status as IncidentStatus].items.push(incident);
+          }
         });
 
         // Map resolved incidents
@@ -1102,6 +1148,8 @@ function App() {
           const status = mapBackendStatusToFrontend(data.status);
           
           console.log(`✨ Processing incident ${incident.incidentNumber} -> ${isResolved ? 'resolved' : status}`);
+          console.log('📊 Backend data status_history:', data.status_history);
+          console.log('📊 Mapped incident statusHistory:', incident.statusHistory);
           
           // Check if this is a redis-test incident (complete progress bar)
           console.log('🔍 Checking incident source:', {
@@ -1126,14 +1174,11 @@ function App() {
           
           // If incident is resolved, move it to resolved list
           if (isResolved) {
-            // Close modal if it's open for this incident
+            // Update modal if it's open for this incident AND show success toast
             if (modalIncidentRef.current?.id === incident.id) {
-              setModalIncident(null);
-              console.log('🔄 Closed modal for resolved incident');
-              
-              // Show success toast
-              setSuccessToast('Incident resolved');
-              setTimeout(() => setSuccessToast(null), 3000);
+              setModalIncident(incident);
+              showSuccessToast('Incident resolved');
+              console.log('✅ Incident resolved - modal updated and remains open for user review');
             }
             console.log(`🎉 Incident ${incident.incidentNumber} resolved - moving to resolved panel`);
             
@@ -1201,22 +1246,31 @@ function App() {
                 }
               }
               
-              if (existingColumnKey !== null) {
-                // Incident exists in the board
-                if (existingColumnKey === status) {
-                  // Same column - update in place (preserve position)
-                  newBoard[status].items[existingIndex] = incident;
-                  console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
+              // Only process if status is a valid board column
+              if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+                if (existingColumnKey !== null) {
+                  // Incident exists in the board
+                  if (existingColumnKey === status) {
+                    // Same column - update in place (preserve position)
+                    newBoard[status as IncidentStatus].items[existingIndex] = incident;
+                    console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
+                  } else {
+                    // Different column - remove from old, add to new
+                    newBoard[existingColumnKey].items.splice(existingIndex, 1);
+                    newBoard[status as IncidentStatus].items.push(incident);
+                    console.log(`📦 Moved incident ${incident.incidentNumber} from ${existingColumnKey} to ${status} column`);
+                  }
                 } else {
-                  // Different column - remove from old, add to new
-                  newBoard[existingColumnKey].items.splice(existingIndex, 1);
-                  newBoard[status].items.push(incident);
-                  console.log(`📦 Moved incident ${incident.incidentNumber} from ${existingColumnKey} to ${status} column`);
+                  // New incident - add to target column
+                  newBoard[status as IncidentStatus].items.push(incident);
+                  console.log(`✅ Added new incident ${incident.incidentNumber} to ${status} column`);
                 }
-              } else {
-                // New incident - add to target column
-                newBoard[status].items.push(incident);
-                console.log(`✅ Added new incident ${incident.incidentNumber} to ${status} column`);
+              } else if (status === 'Resolved') {
+                // Incident was resolved - remove from board if it exists
+                if (existingColumnKey !== null) {
+                  newBoard[existingColumnKey].items.splice(existingIndex, 1);
+                  console.log(`✅ Removed resolved incident ${incident.incidentNumber} from ${existingColumnKey} column`);
+                }
               }
               
               return newBoard;
@@ -1291,7 +1345,7 @@ function App() {
         const severityMatch =
           selectedSeverities.length === 0 ||
           (item.severity && selectedSeverities.includes(item.severity)) ||
-          (!item.severity && selectedSeverities.includes('minor'));
+          (!item.severity && selectedSeverities.includes('low'));
         const teamMatch = selectedTeams.length === 0 || selectedTeams.includes(item.team);
         return severityMatch && teamMatch;
       });
@@ -1427,6 +1481,29 @@ function App() {
                 {error}
               </span>
             )}
+            <button
+              onClick={() => setShowGuideModal(true)}
+              className="ml-2 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer flex items-center gap-2 font-medium text-sm"
+              style={{
+                backgroundColor: 'rgb(249, 115, 22)',
+                color: 'white',
+                boxShadow: '0 4px 6px -1px rgba(249, 115, 22, 0.3), 0 2px 4px -1px rgba(249, 115, 22, 0.2)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgb(234, 88, 12)';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgb(249, 115, 22)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              title="Guide & Info"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="white" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Guide</span>
+            </button>
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -1449,7 +1526,7 @@ function App() {
                 </>
               ) : (
                 <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" style={{ stroke: 'rgb(249, 115, 22)' }}>
+                  <svg className="w-4 h-4 transition-colors duration-200 group-hover:stroke-[rgb(249,115,22)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   <span className="transition-colors duration-200 group-hover:text-[rgb(249,115,22)]">Generate Incident</span>
@@ -1494,11 +1571,11 @@ function App() {
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" style={{ stroke: 'rgb(249, 115, 22)' }}>
+                    <svg className="w-4 h-4 transition-colors duration-200 group-hover:stroke-[rgb(249,115,22)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                     <span className="transition-colors duration-200 group-hover:text-[rgb(249,115,22)]">Trigger Failure</span>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" style={{ stroke: 'rgb(249, 115, 22)' }}>
+                    <svg className="w-4 h-4 transition-colors duration-200 group-hover:stroke-[rgb(249,115,22)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </>
@@ -1524,22 +1601,22 @@ function App() {
                       // Close expanded card when triggering
                       if (expandedCardId) setExpandedCardId(null);
                     }}
-                    disabled={redisMemoryPercent !== null && redisMemoryPercent > 90}
+                    disabled={isTriggeringFailure || hasActiveIncident('redis')}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed"
                     style={{
                       color: `rgb(var(--text-primary))`,
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       borderColor: `rgb(var(--border-color))`,
-                      opacity: (redisMemoryPercent !== null && redisMemoryPercent > 90) ? 0.5 : 1,
+                      opacity: (isTriggeringFailure || hasActiveIncident('redis')) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (redisMemoryPercent === null || redisMemoryPercent <= 90) {
+                      if (!isTriggeringFailure && !hasActiveIncident('redis')) {
                         e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                         e.currentTarget.style.transform = 'scale(1.02)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (redisMemoryPercent === null || redisMemoryPercent <= 90) {
+                      if (!isTriggeringFailure && !hasActiveIncident('redis')) {
                         e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                         e.currentTarget.style.transform = 'scale(1)';
                       }
@@ -1551,9 +1628,11 @@ function App() {
                     <div className="flex-1">
                       <div className="font-medium">Overload Redis Memory</div>
                       <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
-                        {redisMemoryPercent !== null && redisMemoryPercent > 90 
-                          ? `Already full (${redisMemoryPercent.toFixed(1)}%)`
-                          : 'Fill memory to 90%+'
+                        {hasActiveIncident('redis')
+                          ? 'Redis incident active'
+                          : (redisMemoryPercent !== null && redisMemoryPercent > 90 
+                            ? `Already full (${redisMemoryPercent.toFixed(1)}%)`
+                            : 'Fill memory to 90%+')
                         }
                       </div>
                     </div>
@@ -1565,22 +1644,22 @@ function App() {
                       // Close expanded card when triggering
                       if (expandedCardId) setExpandedCardId(null);
                     }}
-                    disabled={postgresIdleConnections !== null && postgresIdleConnections > 10}
+                    disabled={isTriggeringFailure || hasActiveIncident('postgres')}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
                       color: `rgb(var(--text-primary))`,
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       borderColor: `rgb(var(--border-color))`,
-                      opacity: (postgresIdleConnections !== null && postgresIdleConnections > 10) ? 0.5 : 1,
+                      opacity: (isTriggeringFailure || hasActiveIncident('postgres')) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (postgresIdleConnections === null || postgresIdleConnections <= 10) {
+                      if (!isTriggeringFailure && !hasActiveIncident('postgres')) {
                         e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                         e.currentTarget.style.transform = 'scale(1.02)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (postgresIdleConnections === null || postgresIdleConnections <= 10) {
+                      if (!isTriggeringFailure && !hasActiveIncident('postgres')) {
                         e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                         e.currentTarget.style.transform = 'scale(1)';
                       }
@@ -1592,9 +1671,11 @@ function App() {
                     <div className="flex-1">
                       <div className="font-medium">Exhaust PostgreSQL Connections</div>
                       <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
-                        {postgresIdleConnections !== null && postgresIdleConnections > 10 
-                          ? `Already exhausted (${postgresIdleConnections} idle)`
-                          : 'Create 12 idle connections'
+                        {hasActiveIncident('postgres')
+                          ? 'PostgreSQL incident active'
+                          : (postgresIdleConnections !== null && postgresIdleConnections > 10 
+                            ? `Already exhausted (${postgresIdleConnections} idle)`
+                            : 'Create 12 idle connections')
                         }
                       </div>
                     </div>
@@ -1606,22 +1687,22 @@ function App() {
                       // Close expanded card when triggering
                       if (expandedCardId) setExpandedCardId(null);
                     }}
-                    disabled={isTriggeringFailure}
+                    disabled={isTriggeringFailure || hasActiveIncident('postgres')}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
                       color: `rgb(var(--text-primary))`,
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       borderColor: `rgb(var(--border-color))`,
-                      opacity: isTriggeringFailure ? 0.5 : 1,
+                      opacity: (isTriggeringFailure || hasActiveIncident('postgres')) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (!isTriggeringFailure) {
+                      if (!isTriggeringFailure && !hasActiveIncident('postgres')) {
                         e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                         e.currentTarget.style.transform = 'scale(1.02)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!isTriggeringFailure) {
+                      if (!isTriggeringFailure && !hasActiveIncident('postgres')) {
                         e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                         e.currentTarget.style.transform = 'scale(1)';
                       }
@@ -1633,7 +1714,12 @@ function App() {
                     <div className="flex-1">
                       <div className="font-medium">Create PostgreSQL Bloat</div>
                       <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
-                        Generate dead tuples (needs VACUUM)
+                        {hasActiveIncident('postgres')
+                          ? 'PostgreSQL incident active'
+                          : (systemsHealth && systemsHealth['postgres-bloat']?.will_trigger_incident
+                            ? `Already bloated (${systemsHealth['postgres-bloat'].dead_ratio}% dead tuples)`
+                            : 'Generate dead tuples (needs VACUUM)')
+                        }
                       </div>
                     </div>
                   </button>
@@ -1644,22 +1730,22 @@ function App() {
                       // Close expanded card when triggering
                       if (expandedCardId) setExpandedCardId(null);
                     }}
-                    disabled={isTriggeringFailure}
+                    disabled={isTriggeringFailure || hasActiveIncident('disk-space')}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
                       color: `rgb(var(--text-primary))`,
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       borderColor: `rgb(var(--border-color))`,
-                      opacity: isTriggeringFailure ? 0.5 : 1,
+                      opacity: (isTriggeringFailure || hasActiveIncident('disk-space')) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (!isTriggeringFailure) {
+                      if (!isTriggeringFailure && !hasActiveIncident('disk-space')) {
                         e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                         e.currentTarget.style.transform = 'scale(1.02)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!isTriggeringFailure) {
+                      if (!isTriggeringFailure && !hasActiveIncident('disk-space')) {
                         e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                         e.currentTarget.style.transform = 'scale(1)';
                       }
@@ -1671,7 +1757,12 @@ function App() {
                     <div className="flex-1">
                       <div className="font-medium">Fill Disk Space</div>
                       <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
-                        Create large log files (needs cleanup)
+                        {hasActiveIncident('disk-space')
+                          ? 'Disk space incident active'
+                          : (systemsHealth && systemsHealth['disk-space']?.will_trigger_incident
+                            ? `Already full (${systemsHealth['disk-space'].used_percent.toFixed(1)}% used)`
+                            : 'Create large log files (needs cleanup)')
+                        }
                       </div>
                     </div>
                   </button>
@@ -2143,23 +2234,26 @@ function App() {
               <button 
                 onClick={() => setShowCreateModal(true)}
                 disabled={isFixingAll}
-                className="text-sm flex items-center gap-2 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg border transition-all duration-500 ease-in-out font-medium"
+                className="text-sm flex items-center gap-2 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed py-2 rounded-lg border transition-all duration-200 ease-in-out font-medium"
                 style={{
-                  borderColor: `rgb(var(--border-color))`,
-                  color: `rgb(var(--text-primary))`
+                  backgroundColor: 'rgb(249, 115, 22)',
+                  borderColor: 'rgb(249, 115, 22)',
+                  color: 'white',
+                  paddingLeft: '16px',
+                  paddingRight: '20px'
                 }}
                 onMouseEnter={(e) => {
                   if (!isFixingAll) {
-                    e.currentTarget.style.borderColor = 'rgb(255, 140, 0)';
-                    e.currentTarget.style.color = 'rgb(255, 140, 0)';
+                    e.currentTarget.style.backgroundColor = 'rgb(234, 88, 12)';
+                    e.currentTarget.style.borderColor = 'rgb(234, 88, 12)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
-                  e.currentTarget.style.color = `rgb(var(--text-primary))`;
+                  e.currentTarget.style.backgroundColor = 'rgb(249, 115, 22)';
+                  e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                 }}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="white" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
                 Create Incident
@@ -2175,18 +2269,26 @@ function App() {
                 onMouseEnter={(e) => {
                   if (!isFixingAll) {
                     e.currentTarget.style.borderColor = 'rgb(255, 140, 0)';
-                    e.currentTarget.style.color = 'rgb(255, 140, 0)';
+                    const svgElement = e.currentTarget.querySelector('svg');
+                    if (svgElement) {
+                      (svgElement as SVGElement).style.stroke = 'rgb(255, 140, 0)';
+                    }
                   }
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
-                  e.currentTarget.style.color = `rgb(var(--text-primary))`;
+                  const svgElement = e.currentTarget.querySelector('svg');
+                  if (svgElement) {
+                    (svgElement as SVGElement).style.stroke = '';
+                  }
                 }}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                View Resolved ({resolvedIncidents.length})
+                <span className="transition-colors duration-200 group-hover:text-[rgb(255,140,0)]">
+                  View Resolved ({resolvedIncidents.length})
+                </span>
               </button>
             </div>
           </div>
@@ -2230,6 +2332,7 @@ function App() {
           onClose={handleCloseModal}
           onSolutionUpdate={handleSolutionUpdate}
           onStatusUpdate={handleStatusUpdate}
+          onShowSuccessToast={showSuccessToast}
         />
       )}
 
@@ -2289,7 +2392,9 @@ function App() {
       {/* Success Toast Notification */}
       {successToast && (
         <div 
-          className="fixed left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in"
+          className={`fixed left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 ${
+            isToastFadingOut ? 'animate-fade-out' : 'animate-fade-in'
+          }`}
           style={{
             backgroundColor: 'rgb(34, 197, 94)',
             color: 'white',
@@ -2301,6 +2406,306 @@ function App() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span className="font-medium">{successToast}</span>
+        </div>
+      )}
+
+      {/* Guide Modal */}
+      {showGuideModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ 
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            overflow: 'hidden',
+            overscrollBehavior: 'contain'
+          }}
+          onClick={() => setShowGuideModal(false)}
+          onWheel={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <div
+            className="rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+            style={{ 
+              backgroundColor: `rgb(var(--card-bg))`,
+              overscrollBehavior: 'contain'
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-4 border-b" style={{ borderColor: `rgb(var(--border-color))` }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <h2 className="text-2xl font-bold text-primary">Incident Management Simulator - Guide</h2>
+                </div>
+                <button
+                  onClick={() => setShowGuideModal(false)}
+                  className="p-2 rounded-lg hover:bg-opacity-10 transition-colors duration-200"
+                  style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-6 space-y-6">
+              {/* Overview */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  What is this?
+                </h3>
+                <p className="text-secondary leading-relaxed">
+                  This is an <span className="font-semibold text-primary">Incident Management Simulator</span> designed to demonstrate incident response workflows. 
+                  It simulates real-world system failures and provides an AI-powered SRE agent that can automatically diagnose and remediate issues.
+                </p>
+              </section>
+
+              {/* Key Features */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  Key Features
+                </h3>
+                <ul className="space-y-2 text-secondary">
+                  <li className="flex items-start gap-2">
+                    <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span><strong>Mock Systems:</strong> Redis, PostgreSQL, and Disk Space monitoring with realistic failure scenarios</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span><strong>AI-Powered Diagnosis:</strong> Get instant AI analysis of incidents with severity, diagnosis, and suggested solutions</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span><strong>Automated Remediation:</strong> SRE agents can automatically fix issues with your approval</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span><strong>Kanban-Style Board:</strong> Track incidents through Triage → Investigating → Fixing → Resolved</span>
+                  </li>
+                </ul>
+              </section>
+
+              {/* How to Use */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  How to Use
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">1. Generate or Create Incidents</h4>
+                    <ul className="ml-4 space-y-1 text-secondary">
+                      <li>• <strong>Generate Incident:</strong> Creates a random synthetic incident for practice</li>
+                      <li>• <strong>Create Incident:</strong> Manually create an incident with custom details</li>
+                      <li>• <strong>Trigger Failure:</strong> Inject real failures into mock systems (Redis, PostgreSQL, Disk Space)</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">2. Manage Incidents</h4>
+                    <ul className="ml-4 space-y-1 text-secondary">
+                      <li>• Click on any incident card to view details</li>
+                      <li>• Use <strong>Get AI Diagnosis</strong> for instant analysis</li>
+                      <li>• Use <strong>Get AI Solution</strong> for recommended fixes</li>
+                      <li>• Change incident status by clicking the status dropdown</li>
+                      <li>• Add notes to track your investigation progress</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">3. Automated Remediation (Agent Ready Incidents)</h4>
+                    <ul className="ml-4 space-y-1 text-secondary">
+                      <li>• Look for incidents with the <span className="text-orange-500">Agent Ready</span> badge</li>
+                      <li>• Click <strong>Start SRE Agent Remediation</strong> to let the AI fix it</li>
+                      <li>• The agent will analyse, propose commands, and wait for your approval</li>
+                      <li>• Review the proposed fix and click <strong>Approve & Execute</strong> or <strong>Reject</strong></li>
+                      <li>• Watch as the agent executes commands and verifies the fix</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">4. Monitor System Health</h4>
+                    <ul className="ml-4 space-y-1 text-secondary">
+                      <li>• Check the <strong>Systems Health</strong> section for real-time status</li>
+                      <li>• Green = Healthy, Red = Critical issue detected</li>
+                      <li>• Use <strong>Reset All</strong> to restore systems to normal and clear resolved incidents</li>
+                    </ul>
+                  </div>
+                </div>
+              </section>
+
+              {/* Incident Types */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  Incident Types
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-4 h-4" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span className="font-semibold text-primary">Synthetic</span>
+                    </div>
+                    <p className="text-sm text-secondary">Practice incidents generated for training purposes</p>
+                  </div>
+                  <div className="p-4 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-4 h-4" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                      </svg>
+                      <span className="font-semibold text-primary">Agent Ready</span>
+                    </div>
+                    <p className="text-sm text-secondary">Real system failures that can be automatically remediated</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Tips */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Pro Tips
+                </h3>
+                <ul className="space-y-2 text-secondary">
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>Use filters to focus on specific severity levels or teams</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>Try triggering failures on mock systems to experience agent-based remediation</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>Add notes during investigation to simulate documenting your incident response</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>Check the resolved panel to review past incidents and agent actions</span>
+                  </li>
+                </ul>
+              </section>
+
+              {/* Architecture & Tech Stack */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                  </svg>
+                  How It Works (Behind the Scenes)
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">Architecture</h4>
+                    <p className="text-secondary text-sm mb-3">
+                      The simulator uses a microservices architecture with real-time communication between components:
+                    </p>
+                    <ul className="ml-4 space-y-2 text-secondary text-sm">
+                      <li>• <strong>Frontend:</strong> React + TypeScript with Vite, real-time WebSocket updates</li>
+                      <li>• <strong>Backend:</strong> Go with PostgreSQL for incident storage and state management</li>
+                      <li>• <strong>AI Services:</strong> Groq (LLaMA) for fast inference, Gemini for complex reasoning</li>
+                      <li>• <strong>Health Monitor:</strong> Python service monitoring mock systems and triggering incidents</li>
+                      <li>• <strong>Mock Systems:</strong> Containerized Redis, PostgreSQL, and disk space services</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">SRE Agent Workflow</h4>
+                    <p className="text-secondary text-sm mb-3">
+                      The AI agent uses a constrained action space for safe automated remediation:
+                    </p>
+                    <div className="ml-4 space-y-2 text-secondary text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">1.</span>
+                        <span><strong>Thinking Phase:</strong> AI analyses incident data and system state using LLaMA 70B</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">2.</span>
+                        <span><strong>Action Selection:</strong> Chooses from pre-defined safe commands (FLUSHALL, VACUUM, cleanup scripts)</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">3.</span>
+                        <span><strong>Human-in-the-Loop:</strong> Presents plan to user for approval before execution</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">4.</span>
+                        <span><strong>Execution:</strong> Runs approved commands via Docker exec against mock containers</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">5.</span>
+                        <span><strong>Verification:</strong> Polls health metrics to confirm the system is restored</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">Mock System Failures</h4>
+                    <p className="text-secondary text-sm mb-2">
+                      Each mock system simulates real production issues:
+                    </p>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-primary text-sm">Redis</span>
+                        </div>
+                        <p className="text-xs text-secondary">Memory exhaustion via `DEBUG POPULATE` → Fixed with `FLUSHALL`</p>
+                      </div>
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-primary text-sm">PostgreSQL</span>
+                        </div>
+                        <p className="text-xs text-secondary">Table bloat from dead tuples → Fixed with `VACUUM FULL`</p>
+                      </div>
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-primary text-sm">Disk Space</span>
+                        </div>
+                        <p className="text-xs text-secondary">tmpfs volume filled with test files → Cleared by cleanup script</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">Safety & Constraints</h4>
+                    <p className="text-secondary text-sm">
+                      The system is designed with safety in mind: incidents are marked as "synthetic" or "agent_ready", 
+                      the agent only acts on mock systems in isolated Docker containers, all commands are pre-approved and constrained, 
+                      and human approval is required before any execution.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
         </div>
       )}
     </div>

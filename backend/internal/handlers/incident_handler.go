@@ -139,8 +139,9 @@ func UpdateIncidentHandler(c *gin.Context) {
 	}
 
 	var updateData struct {
-		Status *string `json:"status" binding:"omitempty,oneof=triage investigating fixing resolved"`
-		Notes  *string `json:"notes"`
+		Status   *string `json:"status" binding:"omitempty,oneof=triage investigating fixing resolved"`
+		Notes    *string `json:"notes"`
+		Severity *string `json:"severity" binding:"omitempty,oneof=high medium low"`
 	}
 	if err := c.ShouldBindJSON(&updateData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -162,6 +163,15 @@ func UpdateIncidentHandler(c *gin.Context) {
 		incident, err = services.UpdateIncidentNotes(id, *updateData.Notes)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update incident notes"})
+			return
+		}
+	}
+
+	// Update severity if provided
+	if updateData.Severity != nil {
+		incident, err = services.UpdateIncidentSeverity(id, *updateData.Severity)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update incident severity"})
 			return
 		}
 	}

@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
-	ws "github.com/tri27pham/incident-management-simulator/backend/internal/websocket"
+	"github.com/tri27pham/incident-management-simulator/backend/internal/services"
 )
 
 // AgentService handles AI-powered incident remediation
@@ -115,6 +115,7 @@ func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExec
 			IncidentID: incident.ID,
 			FromStatus: &incident.Status,
 			ToStatus:   "resolved",
+			ChangedAt:  time.Now(),
 		}
 
 		// Update incident status to resolved
@@ -133,8 +134,8 @@ func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExec
 			tx.Commit()
 			log.Printf("✅ [Agent] Incident %s automatically resolved (%s → resolved)", incident.ID.String()[:8], oldStatus)
 
-			// Broadcast the status change via WebSocket
-			ws.WSHub.Broadcast <- incident
+			// Broadcast the status change via WebSocket (use BroadcastIncidentUpdate to include StatusHistory)
+			services.BroadcastIncidentUpdate(incident.ID)
 			log.Printf("📡 [Agent] Broadcasted incident resolution to WebSocket clients")
 		}
 	} else {
@@ -168,21 +169,21 @@ func (s *AgentService) runWorkflow(execution *models.AgentExecution, incident *m
 	// Workflow will be resumed by ApproveExecution handler
 }
 
-// phaseThinking: AI analyzes the incident and decides what action to take
+// phaseThinking: AI analyses the incident and decides what action to take
 func (s *AgentService) phaseThinking(execution *models.AgentExecution, incident *models.Incident) error {
 	log.Printf("🧠 [Agent] Phase 1: Thinking...")
 
 	execution.Status = models.StatusThinking
 	db.DB.Save(execution)
 
-	// Call AI to analyze incident and recommend action
-	prompt := fmt.Sprintf(`You are an AI agent analyzing a system incident.
+	// Call AI to analyse incident and recommend action
+	prompt := fmt.Sprintf(`You are an AI agent analysing a system incident.
 
 Incident: %s
 Source: %s
 Affected Systems: %v
 
-Analyze this incident and recommend a remediation action.
+Analyse this incident and recommend a remediation action.
 You can ONLY use these available actions:
 - "clear_redis_cache" - Clear all keys from Redis to free up memory (best for memory exhaustion)
 - "restart_redis" - Restart the Redis container to recover from error state

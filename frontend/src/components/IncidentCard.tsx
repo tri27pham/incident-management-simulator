@@ -4,17 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { triggerDiagnosis, triggerSuggestedFix } from '../services/api';
 
 const severityConfig = {
-  critical: { 
-    label: 'Critical', 
-    backgroundColor: 'rgba(239, 68, 68, 0.1)', 
-    color: 'rgb(239, 68, 68)', 
-    borderColor: 'rgb(239, 68, 68)',
-    icon: (
-      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-      </svg>
-    )
-  },
   high: { 
     label: 'High', 
     backgroundColor: 'rgba(239, 68, 68, 0.1)', 
@@ -42,17 +31,6 @@ const severityConfig = {
     backgroundColor: 'rgba(234, 179, 8, 0.1)', 
     color: 'rgb(234, 179, 8)', 
     borderColor: 'rgb(234, 179, 8)',
-    icon: (
-      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    )
-  },
-  minor: { 
-    label: 'Minor', 
-    backgroundColor: 'rgba(156, 163, 175, 0.1)', 
-    color: 'rgb(156, 163, 175)', 
-    borderColor: 'rgb(156, 163, 175)',
     icon: (
       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -88,6 +66,11 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
   const [isWaitingForAutoDiagnosis, setIsWaitingForAutoDiagnosis] = useState(!item.hasDiagnosis && !item.hasSolution);
   const [isGettingSolution, setIsGettingSolution] = useState(false);
   const [solutionError, setSolutionError] = useState<string | null>(null);
+
+  // Check if incident is resolved
+  const isResolved = item.statusHistory && item.statusHistory.length > 0 
+    ? item.statusHistory[item.statusHistory.length - 1].status === 'Resolved'
+    : false;
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't trigger if clicking the modal button or diagnosis button
@@ -339,7 +322,9 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {!item.hasDiagnosis && !item.hasSolution && !isWaitingForAutoDiagnosis && !isDiagnosing && (
                 <button
                   onClick={handleGetDiagnosis}
-                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2"
+                  disabled={isResolved}
+                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ cursor: isResolved ? 'not-allowed' : 'pointer' }}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -374,7 +359,9 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {item.hasDiagnosis && !item.hasSolution && !isGettingSolution && (
                 <button
                   onClick={handleGetSolution}
-                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2"
+                  disabled={isResolved}
+                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ cursor: isResolved ? 'not-allowed' : 'pointer' }}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -453,7 +440,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {isExpanded && (
                 <button
                   onClick={handleModalOpen}
-                  className="modal-trigger p-1.5 rounded transition-colors"
+                  className="modal-trigger p-1.5 rounded transition-colors cursor-pointer"
                   style={{
                     backgroundColor: `rgb(var(--bg-secondary))`,
                   }}

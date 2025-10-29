@@ -6,11 +6,9 @@ interface SeverityBarsProps {
 
 const severityConfig = {
   undiagnosed: { bars: 1, color: 'bg-gray-900' },
-  minor: { bars: 1, color: 'bg-yellow-500' },
   low: { bars: 1, color: 'bg-yellow-500' },
   medium: { bars: 2, color: 'bg-orange-500' },
   high: { bars: 3, color: 'bg-red-500' },
-  critical: { bars: 3, color: 'bg-red-500' },
 };
 
 export function SeverityBars({ severity }: SeverityBarsProps) {

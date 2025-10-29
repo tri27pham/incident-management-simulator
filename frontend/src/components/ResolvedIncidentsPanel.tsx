@@ -91,7 +91,7 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg transition-colors hover:bg-theme-button-hover"
+            className="p-2 rounded-lg transition-colors hover:bg-theme-button-hover cursor-pointer"
             style={{ color: `rgb(var(--text-secondary))` }}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,10 +148,18 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                         </span>
                         {incident.actionable && incident.incidentType === 'real_system' && (
                           <span 
-                            className="px-2 py-0.5 rounded text-xs font-medium"
+                            className="px-2 py-0.5 rounded text-xs font-medium flex items-center gap-1"
+                            style={{
+                              border: '1px solid rgb(34, 197, 94)',
+                              color: 'rgb(34, 197, 94)',
+                              backgroundColor: 'transparent'
+                            }}
                             title="SRE Agent Ready"
                           >
-                            🤖
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                            </svg>
+                            Automated
                           </span>
                         )}
                         {incident.incidentType === 'synthetic' && (
@@ -208,7 +216,11 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                               {incident.affectedServices.map((service, idx) => (
                                 <span
                                   key={idx}
-                                  className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs"
+                                  className="px-2 py-0.5 rounded text-xs"
+                                  style={{
+                                    backgroundColor: 'rgb(249, 115, 22)',
+                                    color: 'white'
+                                  }}
                                 >
                                   {service}
                                 </span>
@@ -233,7 +245,7 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                   return newSet;
                                 });
                               }}
-                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50"
+                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50 cursor-pointer"
                               style={{
                                 backgroundColor: expandedDiagnosis.has(incident.id) ? 'rgba(74, 222, 128, 0.05)' : 'transparent'
                               }}
@@ -284,7 +296,7 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                   return newSet;
                                 });
                               }}
-                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50"
+                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50 cursor-pointer"
                               style={{
                                 backgroundColor: expandedSolutions.has(incident.id) ? 'rgba(96, 165, 250, 0.05)' : 'transparent'
                               }}
@@ -350,13 +362,15 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                                   return newSet;
                                 });
                               }}
-                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50"
+                              className="w-full p-3 flex items-center justify-between transition-colors hover:bg-opacity-50 cursor-pointer"
                               style={{ 
                                 backgroundColor: expandedRemediations.has(incident.id) ? 'rgba(34, 197, 94, 0.05)' : 'transparent'
                               }}
                             >
                               <div className="flex items-center gap-2">
-                                <span className="text-sm">🤖</span>
+                                <svg className="w-4 h-4" style={{ color: 'rgb(34, 197, 94)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                                </svg>
                                 <p className="text-xs font-semibold text-primary">SRE Agent Remediation</p>
                                 <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(34, 197, 94, 0.2)', color: 'rgb(34, 197, 94)' }}>
                                   ✓ Completed
@@ -541,42 +555,78 @@ export function ResolvedIncidentsPanel({ isOpen, onClose, incidents }: ResolvedI
                           <div>
                             <p className="text-xs font-medium text-secondary mb-2">Resolution Timeline:</p>
                             <div className="space-y-2 max-h-40 overflow-y-auto">
-                              {incident.timeline.map((entry, idx) => (
-                                <div key={idx} className="flex items-start gap-2">
-                                  <div className="flex flex-col items-center">
-                                    <div 
-                                      className="w-2 h-2 rounded-full shrink-0 mt-1"
-                                      style={{ 
-                                        backgroundColor: entry.status === 'Resolved' ? 'rgb(34, 197, 94)' : 'rgb(59, 130, 246)'
-                                      }}
-                                    />
-                                    {idx < (incident.timeline?.length ?? 0) - 1 && (
+                              {incident.timeline.map((entry, idx) => {
+                                // Determine colors based on status
+                                const getStatusColors = (status: string) => {
+                                  switch (status) {
+                                    case 'Triage':
+                                      return {
+                                        dot: 'rgb(59, 130, 246)',
+                                        bg: 'rgba(59, 130, 246, 0.1)',
+                                        text: 'rgb(59, 130, 246)'
+                                      };
+                                    case 'Investigating':
+                                      return {
+                                        dot: 'rgb(249, 115, 22)',
+                                        bg: 'rgba(249, 115, 22, 0.1)',
+                                        text: 'rgb(249, 115, 22)'
+                                      };
+                                    case 'Fixing':
+                                      return {
+                                        dot: 'rgb(239, 68, 68)',
+                                        bg: 'rgba(239, 68, 68, 0.1)',
+                                        text: 'rgb(239, 68, 68)'
+                                      };
+                                    case 'Resolved':
+                                      return {
+                                        dot: 'rgb(34, 197, 94)',
+                                        bg: 'rgba(34, 197, 94, 0.1)',
+                                        text: 'rgb(34, 197, 94)'
+                                      };
+                                    default:
+                                      return {
+                                        dot: 'rgb(107, 114, 128)',
+                                        bg: 'rgba(107, 114, 128, 0.1)',
+                                        text: 'rgb(107, 114, 128)'
+                                      };
+                                  }
+                                };
+
+                                const colors = getStatusColors(entry.status);
+
+                                return (
+                                  <div key={idx} className="flex items-start gap-2">
+                                    <div className="flex flex-col items-center">
                                       <div 
-                                        className="w-0.5 h-full min-h-4"
-                                        style={{ backgroundColor: `rgb(var(--border-color))` }}
-                                      />
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span 
-                                        className="text-xs font-medium px-2 py-0.5 rounded"
-                                        style={{
-                                          backgroundColor: entry.status === 'Resolved' 
-                                            ? 'rgb(220, 252, 231)' 
-                                            : 'rgb(219, 234, 254)',
-                                          color: entry.status === 'Resolved'
-                                            ? 'rgb(22, 101, 52)'
-                                            : 'rgb(29, 78, 216)'
+                                        className="w-2 h-2 rounded-full shrink-0 mt-1"
+                                        style={{ 
+                                          backgroundColor: colors.dot
                                         }}
-                                      >
-                                        {entry.status}
-                                      </span>
-                                      <span className="text-xs text-tertiary">{entry.timestamp}</span>
+                                      />
+                                      {idx < (incident.timeline?.length ?? 0) - 1 && (
+                                        <div 
+                                          className="w-0.5 h-full min-h-4"
+                                          style={{ backgroundColor: `rgb(var(--border-color))` }}
+                                        />
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span 
+                                          className="text-xs font-medium px-2 py-0.5 rounded"
+                                          style={{
+                                            backgroundColor: colors.bg,
+                                            color: colors.text
+                                          }}
+                                        >
+                                          {entry.status}
+                                        </span>
+                                        <span className="text-xs text-tertiary">{entry.timestamp}</span>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}

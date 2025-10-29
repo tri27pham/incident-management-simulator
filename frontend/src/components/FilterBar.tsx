@@ -16,7 +16,6 @@ const severityOptions: { value: IncidentSeverity; label: string; color: string }
   { value: 'high', label: 'High', color: 'text-red-600' },
   { value: 'medium', label: 'Medium', color: 'text-orange-600' },
   { value: 'low', label: 'Low', color: 'text-yellow-600' },
-  { value: 'minor', label: 'Undiagnosed', color: 'text-primary' },
 ];
 
 export function FilterBar({
@@ -105,7 +104,7 @@ export function FilterBar({
             }
             setSeverityOpen(!severityOpen);
           }}
-          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors cursor-pointer"
           style={selectedSeverities.length > 0 ? {
             backgroundColor: 'rgba(255, 140, 0, 0.15)',
             borderColor: 'rgb(255, 140, 0)',
@@ -137,7 +136,7 @@ export function FilterBar({
                   <button
                     key={severity.value}
                     onClick={() => onSeverityToggle(severity.value)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-colors"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-colors cursor-pointer"
                     style={{
                       backgroundColor: 'transparent'
                     }}
@@ -180,7 +179,7 @@ export function FilterBar({
             }
             setTeamOpen(!teamOpen);
           }}
-          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-colors cursor-pointer"
           style={selectedTeams.length > 0 ? {
             backgroundColor: 'rgba(255, 140, 0, 0.15)',
             borderColor: 'rgb(255, 140, 0)',
@@ -212,7 +211,7 @@ export function FilterBar({
                   <button
                     key={team}
                     onClick={() => onTeamToggle(team)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-colors"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-colors cursor-pointer"
                     style={{
                       backgroundColor: 'transparent'
                     }}
@@ -241,7 +240,7 @@ export function FilterBar({
       {hasActiveFilters && (
         <button
           onClick={onClearFilters}
-          className="text-sm ml-2 transition-colors text-secondary hover:text-primary"
+          className="text-sm ml-2 transition-colors text-secondary hover:text-primary cursor-pointer"
         >
           Clear filters
         </button>

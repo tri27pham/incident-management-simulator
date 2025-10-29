@@ -98,7 +98,7 @@ export const CreateIncidentModal: React.FC<CreateIncidentModalProps> = ({ isOpen
           <h2 className="text-xl font-semibold text-primary">Create New Incident</h2>
           <button
             onClick={onClose}
-            className="text-secondary hover:text-primary transition-colors p-1 rounded-lg hover:bg-theme-button-hover"
+            className="text-secondary hover:text-primary transition-colors p-1 rounded-lg hover:bg-theme-button-hover cursor-pointer"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -157,10 +157,10 @@ export const CreateIncidentModal: React.FC<CreateIncidentModalProps> = ({ isOpen
                 <select
                   value={formData.severity}
                   onChange={(e) => setFormData({ ...formData, severity: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg text-primary focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 rounded-lg border text-primary focus:outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer"
                   style={{
-                    backgroundColor: 'rgb(156, 163, 175)',
-                    border: 'none',
+                    backgroundColor: `rgb(var(--bg-tertiary))`,
+                    borderColor: `rgb(var(--border-color))`,
                   }}
                 >
                   <option value="high">High</option>
@@ -177,10 +177,10 @@ export const CreateIncidentModal: React.FC<CreateIncidentModalProps> = ({ isOpen
                 <select
                   value={formData.team}
                   onChange={(e) => setFormData({ ...formData, team: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg text-primary focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 rounded-lg border text-primary focus:outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer"
                   style={{
-                    backgroundColor: 'rgb(156, 163, 175)',
-                    border: 'none',
+                    backgroundColor: `rgb(var(--bg-tertiary))`,
+                    borderColor: `rgb(var(--border-color))`,
                   }}
                 >
                   <option value="Platform">Platform</option>
@@ -204,10 +204,10 @@ export const CreateIncidentModal: React.FC<CreateIncidentModalProps> = ({ isOpen
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg text-primary focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 rounded-lg border text-primary focus:outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer"
                   style={{
-                    backgroundColor: 'rgb(156, 163, 175)',
-                    border: 'none',
+                    backgroundColor: `rgb(var(--bg-tertiary))`,
+                    borderColor: `rgb(var(--border-color))`,
                   }}
                 >
                   <option value="Triage">Triage</option>
@@ -242,6 +242,19 @@ export const CreateIncidentModal: React.FC<CreateIncidentModalProps> = ({ isOpen
                       backgroundColor: `rgb(var(--card-bg))`,
                       borderColor: 'rgb(249, 115, 22)',
                       color: 'rgb(249, 115, 22)',
+                      cursor: systemInput.trim() ? 'pointer' : 'default',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (systemInput.trim()) {
+                        e.currentTarget.style.backgroundColor = 'rgb(249, 115, 22)';
+                        e.currentTarget.style.color = 'white';
+                        e.currentTarget.style.cursor = 'pointer';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
+                      e.currentTarget.style.color = 'rgb(249, 115, 22)';
+                      e.currentTarget.style.cursor = systemInput.trim() ? 'pointer' : 'default';
                     }}
                   >
                     Add
@@ -263,7 +276,7 @@ export const CreateIncidentModal: React.FC<CreateIncidentModalProps> = ({ isOpen
                         <button
                           type="button"
                           onClick={() => removeSystem(system)}
-                          className="hover:opacity-70 transition-opacity"
+                          className="hover:opacity-70 transition-opacity cursor-pointer"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -300,14 +313,14 @@ export const CreateIncidentModal: React.FC<CreateIncidentModalProps> = ({ isOpen
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-secondary hover:text-primary transition-colors"
+              className="px-4 py-2 rounded-lg text-sm font-medium text-secondary hover:text-primary transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !formData.title || !formData.description}
-              className="px-6 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               style={{
                 backgroundColor: 'rgb(249, 115, 22)',
               }}

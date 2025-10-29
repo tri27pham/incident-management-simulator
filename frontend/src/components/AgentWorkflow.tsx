@@ -5,9 +5,10 @@ import { startAgentRemediation, getIncidentAgentExecutions, getAgentExecution, a
 interface AgentWorkflowProps {
   incidentId: string;
   canAgentAct: boolean;
+  isResolved?: boolean;
 }
 
-const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }) => {
+const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, isResolved = false }) => {
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,13 +223,13 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
       {!hasActiveExecution && (
         <button
           onClick={handleStartRemediation}
-          disabled={loading}
+          disabled={loading || isResolved}
           className="w-full py-2 px-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2"
           style={{
-            backgroundColor: loading ? 'rgb(107, 114, 128)' : 'rgb(249, 115, 22)',
+            backgroundColor: (loading || isResolved) ? 'rgb(107, 114, 128)' : 'rgb(249, 115, 22)',
             color: 'white',
-            opacity: loading ? 0.6 : 1,
-            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: (loading || isResolved) ? 0.5 : 1,
+            cursor: (loading || isResolved) ? 'not-allowed' : 'pointer',
           }}
         >
           {loading ? (
@@ -276,7 +277,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
             <button
               key={execution.id}
               onClick={() => toggleCancelledExpanded(execution.id)}
-              className="w-full rounded-lg p-3 flex items-center justify-between hover:opacity-80 transition-opacity"
+              className="w-full rounded-lg p-3 flex items-center justify-between hover:opacity-80 transition-opacity cursor-pointer"
               style={{
                 backgroundColor: 'rgba(107, 114, 128, 0.1)',
                 border: '1px solid rgb(107, 114, 128)'
@@ -345,7 +346,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
                 {isCancelled && (
                   <button
                     onClick={() => toggleCancelledExpanded(execution.id)}
-                    className="p-1 hover:opacity-70 transition-opacity"
+                    className="p-1 hover:opacity-70 transition-opacity cursor-pointer"
                   >
                     <svg 
                       className="w-4 h-4 transform rotate-180"
