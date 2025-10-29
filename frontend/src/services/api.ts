@@ -76,6 +76,7 @@ export async function createIncident(data: {
     message: data.title,
     source: data.team,
     status: data.status.toLowerCase(),
+    team: data.team,
     incident_type: 'real_system',
     actionable: false,
     affected_systems: data.affected_systems,

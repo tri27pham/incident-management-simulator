@@ -184,12 +184,10 @@ export const CreateIncidentModal: React.FC<CreateIncidentModalProps> = ({ isOpen
                   }}
                 >
                   <option value="Platform">Platform</option>
-                  <option value="Production">Production</option>
-                  <option value="Backend">Backend</option>
                   <option value="Frontend">Frontend</option>
+                  <option value="Backend">Backend</option>
                   <option value="Data">Data</option>
-                  <option value="Security">Security</option>
-                  <option value="DevOps">DevOps</option>
+                  <option value="Infrastructure">Infrastructure</option>
                 </select>
               </div>
             </div>

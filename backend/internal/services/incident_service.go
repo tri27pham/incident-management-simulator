@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -525,10 +526,15 @@ func GenerateRandomIncident() (models.Incident, error) {
 		return models.Incident{}, fmt.Errorf("failed to parse incident data from AI: %w", err)
 	}
 
+	// Randomly assign a team to make the distribution more realistic
+	teams := []string{"Platform", "Frontend", "Backend", "Data", "Infrastructure"}
+	randomTeam := teams[rand.Intn(len(teams))]
+
 	return models.Incident{
 		Message:         incidentData.Message,
 		Source:          incidentData.Source,
 		Status:          "triage",
+		Team:            randomTeam,            // Randomly assign a team
 		GeneratedBy:     incidentData.Provider, // Track which AI generated this
 		MetricsSnapshot: "{}",                  // Empty JSON object for manually generated incidents
 		// Classification: mark AI-generated incidents as synthetic (not actionable by agents)
