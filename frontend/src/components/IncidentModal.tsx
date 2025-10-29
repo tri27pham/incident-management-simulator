@@ -11,11 +11,61 @@ interface IncidentModalProps {
 }
 
 const severityConfig = {
-  critical: { label: 'Critical', color: 'bg-red-100 text-red-800' },
-  high: { label: 'High', color: 'bg-orange-100 text-orange-800' },
-  medium: { label: 'Medium', color: 'bg-yellow-100 text-yellow-800' },
-  low: { label: 'Low', color: 'bg-blue-100 text-blue-800' },
-  minor: { label: 'Minor', color: 'bg-gray-100 text-gray-800' },
+  critical: { 
+    label: 'Critical', 
+    backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+    color: 'rgb(239, 68, 68)', 
+    borderColor: 'rgb(239, 68, 68)',
+    icon: (
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    )
+  },
+  high: { 
+    label: 'High', 
+    backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+    color: 'rgb(239, 68, 68)', 
+    borderColor: 'rgb(239, 68, 68)',
+    icon: (
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    )
+  },
+  medium: { 
+    label: 'Medium', 
+    backgroundColor: 'rgba(249, 115, 22, 0.1)', 
+    color: 'rgb(249, 115, 22)', 
+    borderColor: 'rgb(249, 115, 22)',
+    icon: (
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    )
+  },
+  low: { 
+    label: 'Low', 
+    backgroundColor: 'rgba(234, 179, 8, 0.1)', 
+    color: 'rgb(234, 179, 8)', 
+    borderColor: 'rgb(234, 179, 8)',
+    icon: (
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    )
+  },
+  minor: { 
+    label: 'Minor', 
+    backgroundColor: 'rgba(156, 163, 175, 0.1)', 
+    color: 'rgb(156, 163, 175)', 
+    borderColor: 'rgb(156, 163, 175)',
+    icon: (
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    )
+  },
 };
 
 // Helper component to format bullet points
@@ -201,26 +251,39 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
             <div className="flex items-center gap-3 mb-2 flex-wrap">
               <span className="text-sm font-medium text-secondary">{incident.incidentNumber}</span>
               {severity && (
-                <span className={`px-2 py-1 rounded text-xs font-medium ${severity.color}`}>
-                  {severity.label}
+                <span 
+                  className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
+                  style={{ 
+                    backgroundColor: severity.backgroundColor, 
+                    color: severity.color, 
+                    border: `1px solid ${severity.borderColor}` 
+                  }}
+                >
+                  {severity.icon}
+                  <span>{severity.label}</span>
                 </span>
               )}
               {/* Agent classification badges - full labels */}
               {incident.actionable && incident.incidentType === 'real_system' && (
                 <span 
                   className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
-                  style={{ backgroundColor: 'rgb(34, 197, 94)', color: 'white' }}
+                  style={{ backgroundColor: 'rgba(249, 115, 22, 0.1)', color: 'rgb(249, 115, 22)', border: '1px solid rgb(249, 115, 22)' }}
                 >
-                  <span>🤖</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
                   <span>Agent Ready</span>
                 </span>
               )}
               {incident.incidentType === 'synthetic' && (
                 <span 
                   className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5"
-                  style={{ backgroundColor: 'rgb(168, 85, 247)', color: 'white' }}
+                  style={{ backgroundColor: 'rgba(249, 115, 22, 0.1)', color: 'rgb(249, 115, 22)', border: '1px solid rgb(249, 115, 22)' }}
                 >
-                  <span>📝</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                   <span>Synthetic</span>
                 </span>
               )}
