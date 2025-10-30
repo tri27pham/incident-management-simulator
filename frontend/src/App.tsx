@@ -2046,7 +2046,13 @@ function App() {
             )}
 
             {/* PostgreSQL Test Service Card */}
-            {systemsHealth && systemsHealth['postgres-test'] && (
+            {systemsHealth && systemsHealth['postgres-test'] && (() => {
+              // Calculate overall PostgreSQL health (minimum of connections and bloat)
+              const connHealth = systemsHealth['postgres-test'].health;
+              const bloatHealth = systemsHealth['postgres-bloat']?.health ?? 100;
+              const overallHealth = Math.min(connHealth, bloatHealth);
+              
+              return (
               <div 
                 className="rounded-lg p-5 border shrink-0"
                 style={{
@@ -2063,13 +2069,13 @@ function App() {
                     <div 
                       className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
                       style={{
-                        backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                        backgroundColor: overallHealth >= 70 
                           ? 'rgba(34, 197, 94, 0.1)' 
                           : 'rgba(239, 68, 68, 0.1)',
                       }}
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{
-                        color: systemsHealth['postgres-test'].health >= 70 
+                        color: overallHealth >= 70 
                           ? 'rgb(34, 197, 94)' 
                           : 'rgb(239, 68, 68)'
                       }}>
@@ -2087,11 +2093,11 @@ function App() {
                   {/* Health Score Badge */}
                   <div className="text-right">
                     <div className="text-2xl font-bold" style={{
-                      color: systemsHealth['postgres-test'].health >= 70 
+                      color: overallHealth >= 70 
                         ? 'rgb(34, 197, 94)' 
                         : 'rgb(239, 68, 68)'
                     }}>
-                      {systemsHealth['postgres-test'].health}%
+                      {overallHealth}%
                     </div>
                     <div className="text-xs text-secondary">Health</div>
                   </div>
@@ -2102,13 +2108,13 @@ function App() {
                   <div 
                     className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
                     style={{
-                      backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                      backgroundColor: overallHealth >= 70 
                         ? 'rgba(34, 197, 94, 0.1)' 
                         : 'rgba(239, 68, 68, 0.1)',
-                      color: systemsHealth['postgres-test'].health >= 70 
+                      color: overallHealth >= 70 
                         ? 'rgb(34, 197, 94)' 
                         : 'rgb(239, 68, 68)',
-                      border: `1px solid ${systemsHealth['postgres-test'].health >= 70 
+                      border: `1px solid ${overallHealth >= 70 
                         ? 'rgb(34, 197, 94)' 
                         : 'rgb(239, 68, 68)'}`,
                     }}
@@ -2116,38 +2122,39 @@ function App() {
                     <div 
                       className="w-1.5 h-1.5 rounded-full"
                       style={{
-                        backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                        backgroundColor: overallHealth >= 70 
                           ? 'rgb(34, 197, 94)' 
                           : 'rgb(239, 68, 68)'
                       }}
                     />
-                    {systemsHealth['postgres-test'].health >= 70 ? 'Operational' : 'Degraded'}
+                    {overallHealth >= 70 ? 'Operational' : 'Degraded'}
                   </div>
                 </div>
 
-                {/* Metrics in a compact 2x2 grid */}
+                {/* Metrics in a compact 1x2 grid */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Idle Connections</div>
-                    <div className="text-base font-semibold text-primary">
-                      {systemsHealth['postgres-test'].idle_connections}
-                    </div>
-                    <div className="text-xs text-tertiary">
-                      {systemsHealth['postgres-test'].idle_ratio.toFixed(1)}% of total
-                    </div>
-                  </div>
                   <div>
                     <div className="text-xs text-secondary mb-1">Connection Pool</div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['postgres-test'].total_connections}/{systemsHealth['postgres-test'].max_connections}
                     </div>
                     <div className="text-xs text-tertiary">
-                      {systemsHealth['postgres-test'].active_connections} active
+                      {systemsHealth['postgres-test'].idle_connections} idle ({systemsHealth['postgres-test'].idle_ratio.toFixed(1)}%)
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Table Bloat</div>
+                    <div className="text-base font-semibold text-primary">
+                      {systemsHealth['postgres-bloat']?.dead_ratio?.toFixed(1) ?? 0}%
+                    </div>
+                    <div className="text-xs text-tertiary">
+                      {systemsHealth['postgres-bloat']?.dead_tuples?.toLocaleString() ?? 0} dead tuples
                     </div>
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Disk Space Service Card */}
             {systemsHealth && systemsHealth['disk-space'] && (

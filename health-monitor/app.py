@@ -880,18 +880,24 @@ def trigger_postgres_bloat():
         """)
         conn.commit()
         
-        # Insert rows
-        print("  Inserting 1000 rows...")
+        # Disable autovacuum for this table to prevent automatic cleanup
         cursor.execute("""
-            INSERT INTO bloat_test (data)
-            SELECT 'test_data_' || generate_series(1, 1000)
+            ALTER TABLE bloat_test SET (autovacuum_enabled = false)
         """)
         conn.commit()
-        print("  ✅ 1000 rows inserted")
         
-        # Update and delete to create dead tuples (50% dead ratio)
-        print("  Creating dead tuples (deleting 50% of rows)...")
-        cursor.execute("DELETE FROM bloat_test WHERE id % 2 = 0")
+        # Insert rows
+        print("  Inserting 10000 rows...")
+        cursor.execute("""
+            INSERT INTO bloat_test (data)
+            SELECT 'test_data_' || generate_series(1, 10000)
+        """)
+        conn.commit()
+        print("  ✅ 10000 rows inserted")
+        
+        # Update and delete to create dead tuples (80% dead ratio)
+        print("  Creating dead tuples (deleting 80% of rows)...")
+        cursor.execute("DELETE FROM bloat_test WHERE id % 5 != 0")
         conn.commit()
         print("  ✅ Dead tuples created")
         
