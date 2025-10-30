@@ -880,18 +880,24 @@ def trigger_postgres_bloat():
         """)
         conn.commit()
         
-        # Insert rows
-        print("  Inserting 1000 rows...")
+        # Disable autovacuum for this table to prevent automatic cleanup
         cursor.execute("""
-            INSERT INTO bloat_test (data)
-            SELECT 'test_data_' || generate_series(1, 1000)
+            ALTER TABLE bloat_test SET (autovacuum_enabled = false)
         """)
         conn.commit()
-        print("  ✅ 1000 rows inserted")
         
-        # Update and delete to create dead tuples (50% dead ratio)
-        print("  Creating dead tuples (deleting 50% of rows)...")
-        cursor.execute("DELETE FROM bloat_test WHERE id % 2 = 0")
+        # Insert rows
+        print("  Inserting 10000 rows...")
+        cursor.execute("""
+            INSERT INTO bloat_test (data)
+            SELECT 'test_data_' || generate_series(1, 10000)
+        """)
+        conn.commit()
+        print("  ✅ 10000 rows inserted")
+        
+        # Update and delete to create dead tuples (80% dead ratio)
+        print("  Creating dead tuples (deleting 80% of rows)...")
+        cursor.execute("DELETE FROM bloat_test WHERE id % 5 != 0")
         conn.commit()
         print("  ✅ Dead tuples created")
         
@@ -1089,15 +1095,17 @@ def clear_disk():
     try:
         print("🧹 Cleaning up disk space...")
         
-        # Remove all test log files created by trigger
-        # Use shell=True to allow wildcard expansion
-        # Remove both bulk file and any legacy numbered files
-        subprocess.run(
-            "rm -f /var/log/incident_sim_test_*.log /var/log/incident_sim_test_bulk.log",
+        # Remove ALL files in /var/log to ensure we get back to baseline
+        # This is safe in our tmpfs environment - it's just simulation data
+        result = subprocess.run(
+            "rm -rf /var/log/* 2>/dev/null || true",
             shell=True,
-            check=True,
-            capture_output=True
+            capture_output=True,
+            text=True
         )
+        
+        if result.returncode != 0 and result.stderr:
+            print(f"  ⚠️  Warning during cleanup: {result.stderr}")
         
         # Get updated disk usage
         usage = shutil.disk_usage("/var/log")
@@ -1116,12 +1124,6 @@ def clear_disk():
             "free_mb": round(free_mb, 2)
         }), 200
         
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error cleaning disk: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
     except Exception as e:
         print(f"❌ Error cleaning disk: {e}")
         return jsonify({

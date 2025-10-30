@@ -1,4 +1,4 @@
-import { Incident, IncidentSeverity } from '../types';
+import { Incident, IncidentSeverity, IncidentStatus } from '../types';
 import { BackendIncident, IncidentWithAnalysis } from './api';
 
 // Map backend severity to frontend severity
@@ -10,10 +10,10 @@ function mapSeverity(backendSeverity?: string): IncidentSeverity | undefined {
     'high': 'high',
     'medium': 'medium',
     'low': 'low',
-    'minor': 'minor',
+    'minor': 'low',
   };
   
-  return severityMap[backendSeverity.toLowerCase()] || 'minor';
+  return severityMap[backendSeverity.toLowerCase()] || 'low';
 }
 
 // Convert backend incident to frontend format
@@ -39,11 +39,12 @@ export function mapBackendIncidentToFrontend(
     timeElapsed = `${diffMins}m`;
   }
   
-  // Extract team from source (e.g., "billing-service" -> "Billing")
-  const team = backendIncident.source
-    ? backendIncident.source.split('-')[0].charAt(0).toUpperCase() + 
-      backendIncident.source.split('-')[0].slice(1)
-    : 'Unknown';
+  // Use team from backend if available, otherwise extract from source
+  const team = backendIncident.team || 
+    (backendIncident.source
+      ? backendIncident.source.split('-')[0].charAt(0).toUpperCase() + 
+        backendIncident.source.split('-')[0].slice(1)
+      : 'Unknown');
   
   // Check for garbage patterns in text
   const hasGarbagePatterns = (text?: string) => {
@@ -127,12 +128,16 @@ export function mapBackendIncidentToFrontend(
     timestamp: new Date(entry.changed_at).toLocaleString(),
   })) || [];
 
+  // Map status - for active incidents, resolved should be treated as Fixing for board state
+  const mappedStatus = mapBackendStatusToFrontend(backendIncident.status);
+  const boardStatus: IncidentStatus = mappedStatus === 'Resolved' ? 'Fixing' : mappedStatus as IncidentStatus;
+
   const mappedIncident = {
     id: backendIncident.id,
     incidentNumber: `INC-${backendIncident.id.slice(0, 4).toUpperCase()}`,
     title: backendIncident.message,
     timeElapsed,
-    status: mapBackendStatusToFrontend(backendIncident.status),
+    status: boardStatus,
     severity: analysis ? mapSeverity(analysis.severity) : undefined,
     team,
     description: hasValidDiagnosis && analysis ? analysis.diagnosis : undefined, // Diagnosis IS the description
@@ -181,13 +186,13 @@ export function mapFrontendStatusToBackend(status: string): string {
 }
 
 // Map backend status to frontend status
-export function mapBackendStatusToFrontend(status: string): 'Triage' | 'Investigating' | 'Fixing' {
-  const statusMap: Record<string, 'Triage' | 'Investigating' | 'Fixing'> = {
+export function mapBackendStatusToFrontend(status: string): 'Triage' | 'Investigating' | 'Fixing' | 'Resolved' {
+  const statusMap: Record<string, 'Triage' | 'Investigating' | 'Fixing' | 'Resolved'> = {
     'triage': 'Triage',
     'investigating': 'Investigating',
     'fixing': 'Fixing',
-    'resolved': 'Fixing', // Treat resolved as fixing for now
+    'resolved': 'Resolved',  // Map resolved for timeline display
   };
-  return statusMap[status] || 'Triage';
+  return statusMap[status.toLowerCase()] || 'Triage';
 }
 

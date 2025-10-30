@@ -43,7 +43,7 @@ export function IncidentColumn({ columnId, column, expandedCardId, onToggleExpan
           <div
             {...provided.droppableProps}
             ref={provided.innerRef}
-            className="min-h-[400px] transition-colors duration-200 rounded-lg"
+            className="min-h-[600px] transition-colors duration-200 rounded-lg"
             style={{
               backgroundColor: snapshot.isDraggingOver ? 'rgba(107, 114, 128, 0.15)' : 'transparent'
             }}

@@ -132,6 +132,13 @@ Provide 3-4 SHORT bullet points (one sentence each):
 
 Use • symbol for bullets.
 
+Severity Guidelines (be accurate and match the actual impact):
+- "low": Minor issues like cosmetic bugs, non-critical monitoring gaps, documentation issues, dev tool problems, delayed reports, duplicate non-urgent notifications, analytics tracking issues
+- "medium": Multiple users affected, performance degradation, non-critical service degraded, delays in non-critical workflows
+- "high": Critical service completely down, data loss risk, major security breach, payment failures, authentication broken, widespread user impact
+
+Carefully assess the ACTUAL impact described. If it's a minor/cosmetic issue, monitoring gap, or dev tool problem, it MUST be "low".
+
 Respond in JSON:
 {{
   "diagnosis": "• [cause]\\n• [impact]\\n• [systems]",
@@ -198,10 +205,17 @@ Provide 3-4 SHORT, actionable bullet points:
 
 One sentence per bullet. Use • symbol.
 
+Rate your confidence based on:
+- High confidence (0.85-0.95): Clear diagnosis with standard solutions
+- Medium confidence (0.70-0.84): Good understanding but some uncertainty
+- Low confidence (0.60-0.69): Multiple possible causes or complex issue
+
+IMPORTANT: confidence must be a number between 0.60 and 0.95. Do NOT use 0 or 0.0.
+
 Respond in JSON:
 {{
   "suggested_fix": "• [immediate action]\\n• [fix steps]\\n• [verification]",
-  "confidence": 0.0 to 1.0
+  "confidence": 0.75
 }}"""
     
     # Try with garbage detection
@@ -217,7 +231,7 @@ Respond in JSON:
             else:
                 return SuggestedFixResponse(
                     suggested_fix="AI service returned invalid response. Please try again.",
-                    confidence=0.0,
+                    confidence=0.50,
                     provider="error"
                 )
         
@@ -228,10 +242,19 @@ Respond in JSON:
             
             # Check if there's an error from AI services
             if "error" in parsed:
-                return SuggestedFixResponse(suggested_fix=parsed["error"], confidence=0.0, provider="error")
+                return SuggestedFixResponse(suggested_fix=parsed["error"], confidence=0.50, provider="error")
             
-            confidence = float(parsed.get("confidence", 0.7))
-            confidence = max(0.0, min(confidence, 1.0))
+            confidence = float(parsed.get("confidence", 0.75))
+            print(f"🔍 Raw confidence from AI: {confidence}")
+            
+            # If AI returns 0 or very low, default to 0.60 (minimum realistic)
+            if confidence <= 0.05:
+                print(f"⚠️  AI returned very low confidence ({confidence}), defaulting to 0.60")
+                confidence = 0.60
+            
+            # Clamp confidence to realistic range (60% - 95%)
+            confidence = max(0.60, min(confidence, 0.95))
+            print(f"✅ Final confidence: {confidence}")
             
             solution_text = parsed.get("suggested_fix", cleaned_raw)
             
@@ -251,7 +274,7 @@ Respond in JSON:
     # Final fallback
     return SuggestedFixResponse(
         suggested_fix="Unable to generate solution. Please try again.",
-        confidence=0.0,
+        confidence=0.50,
         provider="error"
     )
 
@@ -286,31 +309,46 @@ def generate_incident():
     """Generate a random incident using AI."""
     import random
     
-    # Randomly select a category to enforce variety
+    # Randomly select a category to enforce variety - mix of high, medium, and low severity scenarios
+    # Each category tuple: (category, example_msg, example_src, expected_severity)
     categories = [
-        ("API/Gateway", "API Gateway returning 503 errors for EU users", "api-gateway"),
-        ("Authentication", "JWT token validation failing causing user logout loops", "auth-service"),
-        ("Frontend", "JavaScript bundle failing to load causing blank pages", "cdn"),
-        ("Cache", "Redis memory exhaustion causing cache misses and API slowdowns", "redis-cache"),
-        ("Message Queue", "Kafka consumer lag exceeding 1 million messages", "event-processor"),
-        ("Infrastructure", "Kubernetes nodes running out of disk space causing pod evictions", "k8s-cluster"),
-        ("Payment", "Stripe webhook delays causing order confirmation failures", "payment-service"),
-        ("Email", "SendGrid rate limits causing password reset email delays", "email-service"),
-        ("Deployment", "Recent deployment causing memory leaks in production pods", "user-api"),
-        ("Monitoring", "Datadog agent crashes causing metrics gaps in dashboards", "observability"),
-        ("Network", "Network latency spikes between regions causing timeout errors", "load-balancer"),
-        ("Storage", "S3 bucket access errors preventing image uploads", "storage-service"),
-        ("Search", "Elasticsearch cluster yellow state causing slow search queries", "search-api"),
-        ("Database", "PostgreSQL connection pool exhaustion causing transaction timeouts", "postgres-db"),
-        ("CDN", "CloudFlare cache purge causing origin server overload", "cdn-origin"),
+        # High severity scenarios
+        ("API/Gateway", "API Gateway returning 503 errors for EU users", "api-gateway", "high"),
+        ("Authentication", "JWT token validation failing causing user logout loops", "auth-service", "high"),
+        ("Frontend", "JavaScript bundle failing to load causing blank pages", "cdn", "high"),
+        ("Cache", "Redis memory exhaustion causing cache misses and API slowdowns", "redis-cache", "high"),
+        ("Message Queue", "Kafka consumer lag exceeding 1 million messages", "event-processor", "high"),
+        ("Infrastructure", "Kubernetes nodes running out of disk space causing pod evictions", "k8s-cluster", "high"),
+        ("Payment", "Stripe webhook delays causing order confirmation failures", "payment-service", "high"),
+        ("Database", "PostgreSQL connection pool exhaustion causing transaction timeouts", "postgres-db", "high"),
+        
+        # Medium severity scenarios
+        ("Email", "SendGrid rate limits causing password reset email delays", "email-service", "medium"),
+        ("Deployment", "Recent deployment causing memory leaks in production pods", "user-api", "medium"),
+        ("Network", "Network latency spikes between regions causing timeout errors", "load-balancer", "medium"),
+        ("Storage", "S3 bucket access errors preventing image uploads", "storage-service", "medium"),
+        ("Search", "Elasticsearch cluster yellow state causing slow search queries", "search-api", "medium"),
+        ("CDN", "CloudFlare cache purge causing origin server overload", "cdn-origin", "medium"),
+        
+        # Low severity scenarios
+        ("Monitoring", "Datadog agent missing metrics for non-critical dashboard widgets", "observability", "low"),
+        ("Logging", "Log aggregation delays causing 5-minute gap in recent logs", "logging-service", "low"),
+        ("UI", "CSS styling glitch making button text slightly misaligned on mobile", "frontend", "low"),
+        ("Documentation", "API documentation outdated for deprecated endpoint parameters", "docs-site", "low"),
+        ("Analytics", "User tracking pixel failing to capture session duration for reports", "analytics", "low"),
+        ("Notification", "Slack webhook retry causing duplicate non-urgent notifications", "notification-service", "low"),
+        ("Cron Job", "Daily report generation running 30 minutes late", "scheduler", "low"),
+        ("Dev Tools", "Development environment auto-refresh not triggering on file changes", "dev-server", "low"),
     ]
     
-    category, example_msg, example_src = random.choice(categories)
+    category, example_msg, example_src, expected_severity = random.choice(categories)
     
     prompt = f"""Generate a realistic software incident in the {category} category.
 
     Be creative and specific. DO NOT repeat this example exactly: "{example_msg}"
     Use it as inspiration but create something DIFFERENT in the same category.
+    
+    IMPORTANT: This should be a {expected_severity.upper()} severity incident - make sure the issue matches that level of impact.
     
     Respond with ONLY valid JSON (no explanations, no markdown):
     {{
@@ -399,8 +437,8 @@ def agent_think(req: AgentThinkRequest):
                 completion = groq_client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": req.prompt}],
-                    temperature=0.3,
-                    max_tokens=1000
+                    temperature=0.5,  # Increased for more varied decision-making
+                    max_tokens=1500  # Increased for detailed reasoning
                 )
                 response_text = completion.choices[0].message.content.strip()
                 cleaned = clean_json_string(response_text)
@@ -415,7 +453,7 @@ def agent_think(req: AgentThinkRequest):
                 response = gemini_client.models.generate_content(
                     model="gemini-2.5-flash",
                     contents=req.prompt,
-                    config={"temperature": 0.3}
+                    config={"temperature": 0.5}  # Increased for more varied decision-making
                 )
                 response_text = response.text.strip()
                 cleaned = clean_json_string(response_text)

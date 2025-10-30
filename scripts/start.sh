@@ -73,10 +73,13 @@ fi
 echo "⏳ Waiting for PostgreSQL to initialize..."
 sleep 3
 
-# Start Redis test service (for AI agent)
+# Start mock services for AI agent
 echo "🔴 Starting Redis test service..."
 cd "$PROJECT_DIR"
 docker-compose up -d redis-test > /dev/null 2>&1 || echo "   ℹ️  Redis test already running"
+
+echo "🐘 Starting Postgres test service..."
+docker-compose up -d postgres-test > /dev/null 2>&1 || echo "   ℹ️  Postgres test already running"
 
 # Start Health Monitor (for AI agent) - using host.docker.internal for local dev
 echo "🏥 Starting Health Monitor..."
@@ -87,6 +90,7 @@ docker run -d --name health-monitor-standalone \
     -e PYTHONUNBUFFERED=1 \
     -p 8002:8002 \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    --tmpfs /var/log:size=2G \
     health-monitor > /dev/null 2>&1 && echo "   ✓ Health monitor started" || echo "   ⚠️  Health monitor failed to start"
 sleep 2
 
@@ -190,9 +194,16 @@ else
     echo "⚠️  Redis Test:        Not running (AI agent features disabled)"
 fi
 
+# Check Postgres Test
+if docker ps | grep -q postgres-test; then
+    echo "✅ Postgres Test:     Running (port 5433)"
+else
+    echo "⚠️  Postgres Test:     Not running (AI agent features disabled)"
+fi
+
 # Check Health Monitor
 if docker ps | grep -q health-monitor; then
-    echo "✅ Health Monitor:    Running (monitoring Redis)"
+    echo "✅ Health Monitor:    Running (monitoring systems)"
 else
     echo "⚠️  Health Monitor:    Not running (auto-incidents disabled)"
 fi
