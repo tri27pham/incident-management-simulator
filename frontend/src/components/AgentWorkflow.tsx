@@ -5,9 +5,10 @@ import { startAgentRemediation, getIncidentAgentExecutions, getAgentExecution, a
 interface AgentWorkflowProps {
   incidentId: string;
   canAgentAct: boolean;
+  isResolved?: boolean;
 }
 
-const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }) => {
+const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, isResolved = false }) => {
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,7 +202,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
       >
         <div className="flex items-center gap-2 text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
           <span>🔒</span>
-          <span>AI agent remediation is not available for this incident type.</span>
+          <span>SRE agent remediation is not available for this incident type.</span>
         </div>
       </div>
     );
@@ -212,31 +213,42 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
     ex.status !== 'cancelled' && ex.status !== 'failed'
   );
 
+  // Check if the most recent execution failed or was cancelled
+  const latestExecution = executions[0];
+  const showRetryForFailed = latestExecution && (latestExecution.status === 'failed' || latestExecution.status === 'cancelled');
+
   return (
     <div className="space-y-4">
-      {/* Start Remediation Button */}
+      {/* Start/Retry Remediation Button */}
       {!hasActiveExecution && (
         <button
           onClick={handleStartRemediation}
-          disabled={loading}
-          className="w-full py-2 px-3 rounded-lg text-sm font-medium transition-all"
+          disabled={loading || isResolved}
+          className="w-full py-2 px-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2"
           style={{
-            backgroundColor: loading ? 'rgb(107, 114, 128)' : 'rgb(249, 115, 22)',
+            backgroundColor: (loading || isResolved) ? 'rgb(107, 114, 128)' : 'rgb(249, 115, 22)',
             color: 'white',
-            opacity: loading ? 0.6 : 1,
-            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: (loading || isResolved) ? 0.5 : 1,
+            cursor: (loading || isResolved) ? 'not-allowed' : 'pointer',
           }}
         >
           {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+            <>
+              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               Starting...
-            </span>
+            </>
+          ) : showRetryForFailed ? (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Retry SRE Agent Remediation
+            </>
           ) : (
-            'Start AI Agent Remediation'
+            'Start SRE Agent Remediation'
           )}
         </button>
       )}
@@ -265,7 +277,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
             <button
               key={execution.id}
               onClick={() => toggleCancelledExpanded(execution.id)}
-              className="w-full rounded-lg p-3 flex items-center justify-between hover:opacity-80 transition-opacity"
+              className="w-full rounded-lg p-3 flex items-center justify-between hover:opacity-80 transition-opacity cursor-pointer"
               style={{
                 backgroundColor: 'rgba(107, 114, 128, 0.1)',
                 border: '1px solid rgb(107, 114, 128)'
@@ -334,7 +346,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
                 {isCancelled && (
                   <button
                     onClick={() => toggleCancelledExpanded(execution.id)}
-                    className="p-1 hover:opacity-70 transition-opacity"
+                    className="p-1 hover:opacity-70 transition-opacity cursor-pointer"
                   >
                     <svg 
                       className="w-4 h-4 transform rotate-180"
@@ -507,7 +519,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
             {/* Approval Prompt / Execution Status */}
             {(execution.status === 'awaiting_approval' || execution.status === 'executing' || execution.status === 'verifying') && (
               <div 
-                className="p-4 rounded-lg"
+                className="p-3 rounded-lg"
                 style={{ 
                   backgroundColor: execution.status === 'awaiting_approval' 
                     ? 'rgba(249, 115, 22, 0.1)' 
@@ -519,30 +531,31 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
               >
                 {execution.status === 'awaiting_approval' ? (
                   <>
-                    <div className="flex items-start gap-3 mb-4">
-                      <svg className="w-6 h-6 shrink-0" style={{ color: 'rgb(249, 115, 22)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-start gap-2 mb-3">
+                      <svg className="w-5 h-5 shrink-0" style={{ color: 'rgb(249, 115, 22)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                       </svg>
                       <div>
-                        <div className="font-semibold mb-1" style={{ color: 'rgb(249, 115, 22)' }}>
+                        <div className="font-semibold mb-1 text-sm" style={{ color: 'rgb(249, 115, 22)' }}>
                           Approval Required
                         </div>
-                        <p className="text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
-                          The AI agent has analyzed the incident and prepared a remediation plan. 
+                        <p className="text-xs" style={{ color: 'rgb(var(--text-secondary))' }}>
                           Review the commands and risks above before proceeding.
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex gap-2">
                       <button
                         onClick={() => handleApprove(execution.id)}
                         disabled={approvingId === execution.id}
-                        className="flex-1 py-2 px-4 rounded-lg font-medium transition-all"
+                        className="flex-1 py-1.5 px-3 rounded-lg font-medium text-sm"
                         style={{
                           backgroundColor: approvingId === execution.id ? 'rgb(107, 114, 128)' : 'rgb(34, 197, 94)',
                           color: 'white',
                           opacity: approvingId === execution.id ? 0.6 : 1,
                           cursor: approvingId === execution.id ? 'not-allowed' : 'pointer',
+                          transform: approvingId === execution.id ? 'scale(0.95)' : 'scale(1)',
+                          transition: 'all 0.15s ease-in-out',
                         }}
                       >
                         {approvingId === execution.id ? 'Approving...' : '✓ Approve & Execute'}
@@ -550,7 +563,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
                       <button
                         onClick={() => handleReject(execution.id)}
                         disabled={approvingId === execution.id}
-                        className="flex-1 py-2 px-4 rounded-lg font-medium transition-all"
+                        className="flex-1 py-1.5 px-3 rounded-lg font-medium transition-all text-sm"
                         style={{
                           backgroundColor: approvingId === execution.id ? 'rgb(107, 114, 128)' : 'rgb(239, 68, 68)',
                           color: 'white',
@@ -563,12 +576,12 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
                     </div>
                   </>
                 ) : (
-                  <div className="flex items-center justify-center gap-3 py-2">
-                    <svg className="animate-spin h-6 w-6" style={{ color: 'rgb(59, 130, 246)' }} fill="none" viewBox="0 0 24 24">
+                  <div className="flex items-center justify-center gap-2 py-1">
+                    <svg className="animate-spin h-4 w-4" style={{ color: 'rgb(59, 130, 246)' }} fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span className="font-medium" style={{ color: 'rgb(59, 130, 246)' }}>
+                    <span className="font-medium text-xs" style={{ color: 'rgb(59, 130, 246)' }}>
                       {execution.status === 'executing' ? '⚡ Executing commands...' : '🔍 Verifying results...'}
                     </span>
                   </div>
@@ -579,22 +592,57 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
             {/* Completion Status */}
             {execution.status === 'completed' && execution.success && execution.verification_passed && (
               <div 
-                className="p-4 rounded-lg"
+                className="p-3 rounded-lg"
                 style={{ 
                   backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                  border: '2px solid rgb(34, 197, 94)'
+                  border: '2px solid rgb(34, 197, 94)',
+                  animation: 'fadeIn 0.5s ease-in'
                 }}
               >
-                <div className="flex items-center justify-center gap-3 py-2">
-                  <svg className="w-8 h-8" style={{ color: 'rgb(34, 197, 94)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <style>
+                  {`
+                    @keyframes fadeIn {
+                      from {
+                        opacity: 0;
+                        transform: scale(0.95);
+                      }
+                      to {
+                        opacity: 1;
+                        transform: scale(1);
+                      }
+                    }
+                    @keyframes checkmark {
+                      0% {
+                        transform: scale(0) rotate(0deg);
+                      }
+                      50% {
+                        transform: scale(1.2) rotate(10deg);
+                      }
+                      100% {
+                        transform: scale(1) rotate(0deg);
+                      }
+                    }
+                  `}
+                </style>
+                <div className="flex items-center justify-center gap-2 py-1.5">
+                  <svg 
+                    className="w-6 h-6" 
+                    style={{ 
+                      color: 'rgb(34, 197, 94)',
+                      animation: 'checkmark 0.6s ease-out'
+                    }} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div>
-                    <div className="font-semibold" style={{ color: 'rgb(34, 197, 94)' }}>
+                    <div className="font-semibold text-sm" style={{ color: 'rgb(34, 197, 94)' }}>
                       ✅ Incident Resolved Successfully
                     </div>
-                    <p className="text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
-                      All remediation actions completed and verified. The incident has been automatically resolved.
+                    <p className="text-xs" style={{ color: 'rgb(var(--text-secondary))' }}>
+                      All remediation actions completed and verified.
                     </p>
                   </div>
                 </div>
@@ -729,7 +777,8 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct }
                 style={{ 
                   backgroundColor: 'rgba(239, 68, 68, 0.1)',
                   border: '1px solid rgb(239, 68, 68)',
-                  color: 'rgb(239, 68, 68)'
+                  color: 'rgb(239, 68, 68)',
+                  animation: 'fadeIn 0.5s ease-in'
                 }}
               >
                 <div className="font-medium mb-1">Error</div>

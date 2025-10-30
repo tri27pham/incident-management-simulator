@@ -1,10 +1,12 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { DragDropContext, DropResult } from 'react-beautiful-dnd';
-import { IncidentBoardState, Incident, IncidentSeverity } from './types';
+import { IncidentBoardState, Incident, IncidentSeverity, IncidentStatus } from './types';
 import { IncidentColumn } from './components/IncidentColumn';
 import { IncidentModal } from './components/IncidentModal';
 import { FilterBar } from './components/FilterBar';
 import { ResolvedIncidentsPanel } from './components/ResolvedIncidentsPanel';
+import { LoginScreen } from './components/LoginScreen';
+import { CreateIncidentModal, NewIncidentData } from './components/CreateIncidentModal';
 import * as api from './services/api';
 import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
 import { useTheme } from './contexts/ThemeContext';
@@ -164,6 +166,10 @@ const mockBoardState: IncidentBoardState = {
 
 function App() {
   const { theme, toggleTheme } = useTheme();
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    // Check if already authenticated in this session
+    return sessionStorage.getItem('authenticated') === 'true';
+  });
   const [board, setBoard] = useState(emptyBoardState);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [modalIncident, setModalIncident] = useState<Incident | null>(null);
@@ -172,16 +178,55 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatorRunning, setGeneratorRunning] = useState(false);
-  const [isTogglingGenerator, setIsTogglingGenerator] = useState(false);
   const [showResolvedPanel, setShowResolvedPanel] = useState(false);
   const [resolvedIncidents, setResolvedIncidents] = useState<Incident[]>([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
   const [showFailureDropdown, setShowFailureDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number } | null>(null);
   const [isTriggeringFailure, setIsTriggeringFailure] = useState(false);
   const [progressBar, setProgressBar] = useState<{ show: boolean; message: string; progress: number } | null>(null);
   const [isFixingAll, setIsFixingAll] = useState(false);
+  const blockWebSocketUpdatesRef = useRef(false);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [isToastFadingOut, setIsToastFadingOut] = useState(false);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [isErrorToastFadingOut, setIsErrorToastFadingOut] = useState(false);
   const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
+
+  // Helper function to show success toast with fade-out animation
+  const showSuccessToast = (message: string) => {
+    setSuccessToast(message);
+    setIsToastFadingOut(false);
+    
+    // Start fade-out after 2.5 seconds
+    setTimeout(() => {
+      setIsToastFadingOut(true);
+    }, 2500);
+    
+    // Clear toast after fade-out completes
+    setTimeout(() => {
+      setSuccessToast(null);
+      setIsToastFadingOut(false);
+    }, 2900);
+  };
+
+  // Helper function to show error toast with fade-out animation
+  const showErrorToast = (message: string) => {
+    setErrorToast(message);
+    setIsErrorToastFadingOut(false);
+    
+    // Start fade-out after 3 seconds
+    setTimeout(() => {
+      setIsErrorToastFadingOut(true);
+    }, 3000);
+    
+    // Clear toast after fade-out completes
+    setTimeout(() => {
+      setErrorToast(null);
+      setIsErrorToastFadingOut(false);
+    }, 3400);
+  };
   const [postgresIdleConnections, setPostgresIdleConnections] = useState<number | null>(null);
   const [systemsHealth, setSystemsHealth] = useState<{
     'redis-test': {
@@ -232,18 +277,19 @@ function App() {
 
   // Lock body scroll when modal or resolved panel is open
   useEffect(() => {
-    if (modalIncident || showResolvedPanel) {
-      // Save original overflow value
-      const originalOverflow = document.body.style.overflow;
+    if (modalIncident || showResolvedPanel || showGuideModal) {
       // Lock scroll
       document.body.style.overflow = 'hidden';
       
-      // Cleanup: restore original overflow when modal/panel closes
+      // Cleanup: always restore scroll when modal/panel closes
       return () => {
-        document.body.style.overflow = originalOverflow;
+        document.body.style.overflow = '';
       };
+    } else {
+      // Ensure scroll is unlocked when nothing is open
+      document.body.style.overflow = '';
     }
-  }, [modalIncident, showResolvedPanel]);
+  }, [modalIncident, showResolvedPanel, showGuideModal]);
 
   // Close dropdown when clicking outside and fetch Redis status when opening
   useEffect(() => {
@@ -334,6 +380,20 @@ function App() {
     setModalIncident(null);
   };
 
+  // Helper function to check if a system has any active incidents
+  const hasActiveIncident = (systemName: string): boolean => {
+    const allIncidents = [
+      ...board.Triage.items,
+      ...board.Investigating.items,
+      ...board.Fixing.items,
+    ];
+    return allIncidents.some(incident => 
+      incident.affectedServices?.some(service => 
+        service.toLowerCase().includes(systemName.toLowerCase())
+      )
+    );
+  };
+
   const handleSeverityToggle = (severity: IncidentSeverity) => {
     // Close expanded card when filter changes
     if (expandedCardId) {
@@ -382,6 +442,26 @@ function App() {
       setTimeout(() => setError(null), 3000);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleCreateIncident = async (data: NewIncidentData) => {
+    console.log('📝 Creating new incident...');
+    try {
+      const incident = await api.createIncident(data);
+      console.log(`✅ Incident created successfully:`, {
+        id: incident.id,
+        message: incident.message,
+        source: incident.source,
+        status: incident.status
+      });
+      // WebSocket will handle the update automatically
+      console.log('⏳ Waiting for WebSocket broadcast...');
+    } catch (error) {
+      console.error('❌ Failed to create incident:', error);
+      setError('Failed to create incident');
+      setTimeout(() => setError(null), 3000);
+      throw error; // Re-throw to let the modal handle it
     }
   };
 
@@ -585,7 +665,10 @@ function App() {
               backendIncidents.forEach((backendIncident) => {
                 const incident = mapBackendIncidentToFrontend(backendIncident);
                 const status = mapBackendStatusToFrontend(backendIncident.status);
-                newBoard[status].items.push(incident);
+                // Only add to board if status is a valid board column (not Resolved)
+                if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+                  newBoard[status as IncidentStatus].items.push(incident);
+                }
               });
 
               const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
@@ -618,8 +701,7 @@ function App() {
       
     } catch (error) {
       console.error('Failed to trigger failure:', error);
-      setError('Failed to trigger failure');
-      setTimeout(() => setError(null), 3000);
+      showErrorToast('Failed to trigger Redis failure');
       setProgressBar(null);
       waitingForRedisIncident.current = false;
       if (progressIntervalRef.current) {
@@ -633,6 +715,7 @@ function App() {
   const handleTriggerPostgresConnections = async () => {
     setIsTriggeringFailure(true);
     setShowFailureDropdown(false);
+    blockWebSocketUpdatesRef.current = true; // Block WebSocket updates
     
     try {
       console.log('🔥 Triggering PostgreSQL connection exhaustion...');
@@ -651,8 +734,28 @@ function App() {
         progress: 70 
       });
       
-      // Wait for incident to be created (5 seconds per health monitor)
-      await new Promise(resolve => setTimeout(resolve, 6000));
+      // Poll for incident creation (health monitor checks every 5 seconds)
+      const startTime = Date.now();
+      const maxWaitTime = 15000; // 15 seconds max
+      let incidentCreated = false;
+      const initialIncidentCount = board.Triage.items.length + board.Investigating.items.length + board.Fixing.items.length;
+      
+      while (!incidentCreated && (Date.now() - startTime) < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+        
+        const backendIncidents = await api.fetchIncidents();
+        const newIncidentCount = backendIncidents.length;
+        
+        // Check if a new incident was created
+        if (newIncidentCount > initialIncidentCount) {
+          incidentCreated = true;
+          break;
+        }
+      }
+      
+      if (!incidentCreated) {
+        throw new Error('Incident was not created - health monitor may not have detected the failure');
+      }
       
       setProgressBar({ 
         show: true, 
@@ -675,21 +778,25 @@ function App() {
       backendIncidents.forEach((backendIncident) => {
         const incident = mapBackendIncidentToFrontend(backendIncident);
         const status = mapBackendStatusToFrontend(backendIncident.status);
-        newBoard[status].items.push(incident);
+        // Only add to board if status is a valid board column (not Resolved)
+        if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+          newBoard[status as IncidentStatus].items.push(incident);
+        }
       });
 
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
       setBoard(newBoard);
       setResolvedIncidents(resolved);
+      blockWebSocketUpdatesRef.current = false; // Unblock WebSocket updates
       
       // Clear progress bar after 2 seconds
       setTimeout(() => setProgressBar(null), 2000);
       
     } catch (error) {
       console.error('Failed to trigger PostgreSQL failure:', error);
-      setError('Failed to trigger PostgreSQL failure');
-      setTimeout(() => setError(null), 3000);
+      showErrorToast(error instanceof Error ? error.message : 'Failed to trigger PostgreSQL failure');
       setProgressBar(null);
+      blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
       setIsTriggeringFailure(false);
     }
@@ -698,6 +805,7 @@ function App() {
   const handleTriggerPostgresBloat = async () => {
     setIsTriggeringFailure(true);
     setShowFailureDropdown(false);
+    blockWebSocketUpdatesRef.current = true; // Block WebSocket updates
     
     try {
       console.log('🔥 Triggering PostgreSQL table bloat...');
@@ -716,8 +824,28 @@ function App() {
         progress: 70 
       });
       
-      // Wait for incident to be created (5 seconds per health monitor)
-      await new Promise(resolve => setTimeout(resolve, 6000));
+      // Poll for incident creation (health monitor checks every 5 seconds)
+      const startTime = Date.now();
+      const maxWaitTime = 15000; // 15 seconds max
+      let incidentCreated = false;
+      const initialIncidentCount = board.Triage.items.length + board.Investigating.items.length + board.Fixing.items.length;
+      
+      while (!incidentCreated && (Date.now() - startTime) < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+        
+        const backendIncidents = await api.fetchIncidents();
+        const newIncidentCount = backendIncidents.length;
+        
+        // Check if a new incident was created
+        if (newIncidentCount > initialIncidentCount) {
+          incidentCreated = true;
+          break;
+        }
+      }
+      
+      if (!incidentCreated) {
+        throw new Error('Incident was not created - health monitor may not have detected the failure');
+      }
       
       setProgressBar({ 
         show: true, 
@@ -740,21 +868,25 @@ function App() {
       backendIncidents.forEach((backendIncident) => {
         const incident = mapBackendIncidentToFrontend(backendIncident);
         const status = mapBackendStatusToFrontend(backendIncident.status);
-        newBoard[status].items.push(incident);
+        // Only add to board if status is a valid board column (not Resolved)
+        if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+          newBoard[status as IncidentStatus].items.push(incident);
+        }
       });
 
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
       setBoard(newBoard);
       setResolvedIncidents(resolved);
+      blockWebSocketUpdatesRef.current = false; // Unblock WebSocket updates
       
       // Clear progress bar after 2 seconds
       setTimeout(() => setProgressBar(null), 2000);
       
     } catch (error) {
       console.error('Failed to trigger PostgreSQL bloat:', error);
-      setError('Failed to trigger PostgreSQL bloat');
-      setTimeout(() => setError(null), 3000);
+      showErrorToast(error instanceof Error ? error.message : 'Failed to trigger PostgreSQL bloat');
       setProgressBar(null);
+      blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
       setIsTriggeringFailure(false);
     }
@@ -763,8 +895,9 @@ function App() {
   const handleTriggerDiskFull = async () => {
     setIsTriggeringFailure(true);
     setShowFailureDropdown(false);
+    blockWebSocketUpdatesRef.current = true; // Block WebSocket updates
     
-    try {
+    try{
       console.log('🔥 Triggering disk space exhaustion...');
       setProgressBar({ 
         show: true, 
@@ -781,8 +914,28 @@ function App() {
         progress: 70 
       });
       
-      // Wait for incident to be created (health monitor checks every 5 seconds)
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Poll for incident creation (health monitor checks every 5 seconds)
+      const startTime = Date.now();
+      const maxWaitTime = 15000; // 15 seconds max
+      let incidentCreated = false;
+      const initialIncidentCount = board.Triage.items.length + board.Investigating.items.length + board.Fixing.items.length;
+      
+      while (!incidentCreated && (Date.now() - startTime) < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+        
+        const backendIncidents = await api.fetchIncidents();
+        const newIncidentCount = backendIncidents.length;
+        
+        // Check if a new incident was created
+        if (newIncidentCount > initialIncidentCount) {
+          incidentCreated = true;
+          break;
+        }
+      }
+      
+      if (!incidentCreated) {
+        throw new Error('Incident was not created - health monitor may not have detected the failure');
+      }
       
       setProgressBar({ 
         show: true, 
@@ -805,59 +958,30 @@ function App() {
       backendIncidents.forEach((backendIncident) => {
         const incident = mapBackendIncidentToFrontend(backendIncident);
         const status = mapBackendStatusToFrontend(backendIncident.status);
-        newBoard[status].items.push(incident);
+        // Only add to board if status is a valid board column (not Resolved)
+        if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+          newBoard[status as IncidentStatus].items.push(incident);
+        }
       });
 
       const resolved = backendResolvedIncidents.map(mapBackendIncidentToFrontend);
       setBoard(newBoard);
       setResolvedIncidents(resolved);
+      blockWebSocketUpdatesRef.current = false; // Unblock WebSocket updates
       
       // Clear progress bar after 2 seconds
       setTimeout(() => setProgressBar(null), 2000);
       
     } catch (error) {
       console.error('Failed to trigger disk full:', error);
-      setError('Failed to trigger disk full');
-      setTimeout(() => setError(null), 3000);
+      showErrorToast(error instanceof Error ? error.message : 'Failed to trigger disk space failure');
       setProgressBar(null);
+      blockWebSocketUpdatesRef.current = false; // Unblock on error
     } finally {
       setIsTriggeringFailure(false);
     }
   };
 
-  const handleToggleGenerator = async () => {
-    setIsTogglingGenerator(true);
-    try {
-      if (generatorRunning) {
-        await api.stopGenerator();
-        setGeneratorRunning(false);
-        console.log('✅ Generator stopped');
-      } else {
-        await api.startGenerator();
-        setGeneratorRunning(true);
-        console.log('✅ Generator started');
-      }
-    } catch (error) {
-      console.error('Failed to toggle generator:', error);
-      setError(`Failed to ${generatorRunning ? 'stop' : 'start'} generator`);
-      setTimeout(() => setError(null), 3000);
-    } finally {
-      setIsTogglingGenerator(false);
-    }
-  };
-
-  // Check generator status on mount
-  useEffect(() => {
-    async function checkGeneratorStatus() {
-      try {
-        const status = await api.getGeneratorStatus();
-        setGeneratorRunning(status.is_running);
-      } catch (error) {
-        console.error('Failed to check generator status:', error);
-      }
-    }
-    checkGeneratorStatus();
-  }, []);
 
   const handleDiagnosisUpdate = (id: string, diagnosis: string) => {
     setBoard((prevBoard) => {
@@ -899,7 +1023,7 @@ function App() {
     });
   };
 
-  const handleSolutionUpdate = (id: string, solution: string) => {
+  const handleSolutionUpdate = (id: string, solution: string, confidence?: number, solutionProvider?: 'gemini' | 'groq' | 'error' | 'unknown') => {
     setBoard((prevBoard) => {
       // Find and update the incident across all columns
       const newBoard = { ...prevBoard };
@@ -915,6 +1039,8 @@ function App() {
             ...updatedItems[itemIndex],
             solution,
             hasSolution: true,
+            ...(confidence !== undefined && { confidence }),
+            ...(solutionProvider && { solutionProvider }),
           };
           
           newBoard[columnKey as keyof typeof newBoard] = {
@@ -928,6 +1054,8 @@ function App() {
               ...modalIncident,
               solution,
               hasSolution: true,
+              ...(confidence !== undefined && { confidence }),
+              ...(solutionProvider && { solutionProvider }),
             });
           }
           
@@ -999,9 +1127,10 @@ function App() {
             // For immediate UI update, add to resolved list
             setResolvedIncidents((prev) => [incident, ...prev]);
             
-            // Close modal if incident is resolved
+            // Show success toast but DON'T close modal (let user review the resolution)
             if (modalIncident?.id === id) {
-              setModalIncident(null);
+              showSuccessToast('Incident resolved');
+              console.log('✅ Incident manually resolved - modal remains open for user review');
             }
           }
         }
@@ -1036,7 +1165,10 @@ function App() {
         backendIncidents.forEach((backendIncident) => {
           const incident = mapBackendIncidentToFrontend(backendIncident);
           const status = mapBackendStatusToFrontend(backendIncident.status);
-          newBoard[status].items.push(incident);
+          // Only add to board if status is a valid board column (not Resolved)
+          if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+            newBoard[status as IncidentStatus].items.push(incident);
+          }
         });
 
         // Map resolved incidents
@@ -1084,11 +1216,19 @@ function App() {
             return;
           }
           
+          // Block WebSocket updates during failure trigger progress bar
+          if (blockWebSocketUpdatesRef.current) {
+            console.log('🚫 Blocking WebSocket update during failure trigger');
+            return;
+          }
+          
           const incident = mapBackendIncidentToFrontend(data);
           const isResolved = data.status === 'resolved';
           const status = mapBackendStatusToFrontend(data.status);
           
           console.log(`✨ Processing incident ${incident.incidentNumber} -> ${isResolved ? 'resolved' : status}`);
+          console.log('📊 Backend data status_history:', data.status_history);
+          console.log('📊 Mapped incident statusHistory:', incident.statusHistory);
           
           // Check if this is a redis-test incident (complete progress bar)
           console.log('🔍 Checking incident source:', {
@@ -1111,14 +1251,14 @@ function App() {
             }, 1500);
           }
           
-          // Update modal if it's open for this incident (use ref to avoid reconnection)
-          if (modalIncidentRef.current?.id === incident.id) {
-            setModalIncident(incident);
-            console.log('🔄 Updated modal incident');
-          }
-          
           // If incident is resolved, move it to resolved list
           if (isResolved) {
+            // Update modal if it's open for this incident AND show success toast
+            if (modalIncidentRef.current?.id === incident.id) {
+              setModalIncident(incident);
+              showSuccessToast('Incident resolved');
+              console.log('✅ Incident resolved - modal updated and remains open for user review');
+            }
             console.log(`🎉 Incident ${incident.incidentNumber} resolved - moving to resolved panel`);
             
             // Remove from board
@@ -1158,6 +1298,12 @@ function App() {
             });
             
           } else {
+            // Update modal if it's open for this incident (only for non-resolved incidents)
+            if (modalIncidentRef.current?.id === incident.id) {
+              setModalIncident(incident);
+              console.log('🔄 Updated modal incident');
+            }
+            
             // Update the board with new/updated incident
             setBoard((prevBoard) => {
               const newBoard: IncidentBoardState = {
@@ -1179,22 +1325,31 @@ function App() {
                 }
               }
               
-              if (existingColumnKey !== null) {
-                // Incident exists in the board
-                if (existingColumnKey === status) {
-                  // Same column - update in place (preserve position)
-                  newBoard[status].items[existingIndex] = incident;
-                  console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
+              // Only process if status is a valid board column
+              if (status !== 'Resolved' && newBoard[status as IncidentStatus]) {
+                if (existingColumnKey !== null) {
+                  // Incident exists in the board
+                  if (existingColumnKey === status) {
+                    // Same column - update in place (preserve position)
+                    newBoard[status as IncidentStatus].items[existingIndex] = incident;
+                    console.log(`🔄 Updated incident ${incident.incidentNumber} at position ${existingIndex} in ${status} column`);
+                  } else {
+                    // Different column - remove from old, add to new
+                    newBoard[existingColumnKey].items.splice(existingIndex, 1);
+                    newBoard[status as IncidentStatus].items.push(incident);
+                    console.log(`📦 Moved incident ${incident.incidentNumber} from ${existingColumnKey} to ${status} column`);
+                  }
                 } else {
-                  // Different column - remove from old, add to new
-                  newBoard[existingColumnKey].items.splice(existingIndex, 1);
-                  newBoard[status].items.push(incident);
-                  console.log(`📦 Moved incident ${incident.incidentNumber} from ${existingColumnKey} to ${status} column`);
+                  // New incident - add to target column
+                  newBoard[status as IncidentStatus].items.push(incident);
+                  console.log(`✅ Added new incident ${incident.incidentNumber} to ${status} column`);
                 }
-              } else {
-                // New incident - add to target column
-                newBoard[status].items.push(incident);
-                console.log(`✅ Added new incident ${incident.incidentNumber} to ${status} column`);
+              } else if (status === 'Resolved') {
+                // Incident was resolved - remove from board if it exists
+                if (existingColumnKey !== null) {
+                  newBoard[existingColumnKey].items.splice(existingIndex, 1);
+                  console.log(`✅ Removed resolved incident ${incident.incidentNumber} from ${existingColumnKey} column`);
+                }
               }
               
               return newBoard;
@@ -1269,7 +1424,7 @@ function App() {
         const severityMatch =
           selectedSeverities.length === 0 ||
           (item.severity && selectedSeverities.includes(item.severity)) ||
-          (!item.severity && selectedSeverities.includes('minor'));
+          (!item.severity && selectedSeverities.includes('low'));
         const teamMatch = selectedTeams.length === 0 || selectedTeams.includes(item.team);
         return severityMatch && teamMatch;
       });
@@ -1346,8 +1501,18 @@ function App() {
     );
   }
 
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
+  }
+
   return (
-    <div className="min-h-screen" style={{ backgroundColor: `rgb(var(--bg-primary))` }}>
+    <div 
+      className="min-h-screen"
+      style={{ 
+        backgroundColor: `rgb(var(--bg-primary))`,
+      }}
+    >
       {/* Progress Bar */}
       {progressBar?.show && (
         <div className="fixed top-0 left-0 right-0 z-50" style={{ backgroundColor: `rgb(var(--bg-secondary))`, borderBottom: `1px solid rgb(var(--border-color))` }}>
@@ -1380,14 +1545,32 @@ function App() {
       )}
       
       {/* Header */}
-      <header className="px-6 py-4" style={{ 
-        backgroundColor: `rgb(var(--bg-secondary))`,
+      <header className="py-4" style={{ 
+        backgroundColor: `rgb(var(--bg-primary))`,
         borderBottom: `1px solid rgb(var(--border-color))`
       }}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">🏠</span>
-            <h1 className="text-xl font-semibold" style={{ color: `rgb(var(--text-primary))` }}>Home</h1>
+            <button
+              onClick={() => setShowGuideModal(true)}
+              className="px-6 py-2 rounded-lg transition-all duration-200 cursor-pointer flex items-center gap-2 font-medium text-sm"
+              style={{
+                backgroundColor: 'rgb(249, 115, 22)',
+                color: 'white',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgb(234, 88, 12)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgb(249, 115, 22)';
+              }}
+              title="Guide & Info"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="white" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>GUIDE</span>
+            </button>
             {error && (
               <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
                 {error}
@@ -1398,21 +1581,11 @@ function App() {
             <button 
               onClick={handleGenerateIncident}
               disabled={isGenerating || isFixingAll}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
+              className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer border group"
               style={{
                 backgroundColor: `rgb(var(--card-bg))`,
-                borderColor: `rgb(var(--border-color))`,
+                borderColor: 'rgb(249, 115, 22)',
                 color: `rgb(var(--text-primary))`,
-              }}
-              onMouseEnter={(e) => {
-                if (!isGenerating) {
-                  e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
-                  e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
-                e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
               }}
             >
               {isGenerating ? (
@@ -1425,14 +1598,16 @@ function App() {
                 </>
               ) : (
                 <>
-                  <span>⚡</span>
-                  Generate Incident
+                  <svg className="w-4 h-4 transition-colors duration-200 group-hover:stroke-[rgb(249,115,22)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span className="transition-colors duration-200 group-hover:text-[rgb(249,115,22)]">Generate Incident</span>
                 </>
               )}
             </button>
 
             {/* Trigger Failure Dropdown */}
-            <div className="relative" ref={dropdownRef} style={{ zIndex: 10000 }}>
+            <div className="relative" ref={dropdownRef} style={{ zIndex: 40 }}>
               <button 
                 onClick={() => {
                   // ALWAYS close expanded card when clicking this button (opening or closing dropdown)
@@ -1451,21 +1626,11 @@ function App() {
                   setShowFailureDropdown(!showFailureDropdown);
                 }}
                 disabled={isTriggeringFailure || isFixingAll}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
+                className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer border group"
                 style={{
                   backgroundColor: `rgb(var(--card-bg))`,
-                  borderColor: `rgb(var(--border-color))`,
+                  borderColor: 'rgb(249, 115, 22)',
                   color: `rgb(var(--text-primary))`,
-                }}
-                onMouseEnter={(e) => {
-                  if (!isTriggeringFailure) {
-                    e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
-                    e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
-                  e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                 }}
               >
                 {isTriggeringFailure ? (
@@ -1478,9 +1643,11 @@ function App() {
                   </>
                 ) : (
                   <>
-                    <span>💥</span>
-                    Trigger Failure
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 transition-colors duration-200 group-hover:stroke-[rgb(249,115,22)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="transition-colors duration-200 group-hover:text-[rgb(249,115,22)]">Trigger Failure</span>
+                    <svg className="w-4 h-4 transition-colors duration-200 group-hover:stroke-[rgb(249,115,22)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </>
@@ -1495,7 +1662,7 @@ function App() {
                     backgroundColor: `rgb(var(--card-bg))`,
                     borderColor: `rgb(var(--border-color))`,
                     minWidth: '240px',
-                    zIndex: 999999, // Maximum z-index
+                    zIndex: 40, // Below modal (z-50) but above cards
                     top: dropdownPosition ? `${dropdownPosition.top}px` : '60px',
                     right: dropdownPosition ? `${dropdownPosition.right}px` : '20px',
                   }}
@@ -1506,22 +1673,22 @@ function App() {
                       // Close expanded card when triggering
                       if (expandedCardId) setExpandedCardId(null);
                     }}
-                    disabled={redisMemoryPercent !== null && redisMemoryPercent > 90}
+                    disabled={isTriggeringFailure || hasActiveIncident('redis')}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed"
                     style={{
                       color: `rgb(var(--text-primary))`,
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       borderColor: `rgb(var(--border-color))`,
-                      opacity: (redisMemoryPercent !== null && redisMemoryPercent > 90) ? 0.5 : 1,
+                      opacity: (isTriggeringFailure || hasActiveIncident('redis')) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (redisMemoryPercent === null || redisMemoryPercent <= 90) {
+                      if (!isTriggeringFailure && !hasActiveIncident('redis')) {
                         e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                         e.currentTarget.style.transform = 'scale(1.02)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (redisMemoryPercent === null || redisMemoryPercent <= 90) {
+                      if (!isTriggeringFailure && !hasActiveIncident('redis')) {
                         e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                         e.currentTarget.style.transform = 'scale(1)';
                       }
@@ -1533,9 +1700,11 @@ function App() {
                     <div className="flex-1">
                       <div className="font-medium">Overload Redis Memory</div>
                       <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
-                        {redisMemoryPercent !== null && redisMemoryPercent > 90 
-                          ? `Already full (${redisMemoryPercent.toFixed(1)}%)`
-                          : 'Fill memory to 90%+'
+                        {hasActiveIncident('redis')
+                          ? 'Redis incident active'
+                          : (redisMemoryPercent !== null && redisMemoryPercent > 90 
+                            ? `Already full (${redisMemoryPercent.toFixed(1)}%)`
+                            : 'Fill memory to 90%+')
                         }
                       </div>
                     </div>
@@ -1547,22 +1716,22 @@ function App() {
                       // Close expanded card when triggering
                       if (expandedCardId) setExpandedCardId(null);
                     }}
-                    disabled={postgresIdleConnections !== null && postgresIdleConnections > 10}
+                    disabled={isTriggeringFailure || hasActiveIncident('postgres')}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
                       color: `rgb(var(--text-primary))`,
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       borderColor: `rgb(var(--border-color))`,
-                      opacity: (postgresIdleConnections !== null && postgresIdleConnections > 10) ? 0.5 : 1,
+                      opacity: (isTriggeringFailure || hasActiveIncident('postgres')) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (postgresIdleConnections === null || postgresIdleConnections <= 10) {
+                      if (!isTriggeringFailure && !hasActiveIncident('postgres')) {
                         e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                         e.currentTarget.style.transform = 'scale(1.02)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (postgresIdleConnections === null || postgresIdleConnections <= 10) {
+                      if (!isTriggeringFailure && !hasActiveIncident('postgres')) {
                         e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                         e.currentTarget.style.transform = 'scale(1)';
                       }
@@ -1574,9 +1743,11 @@ function App() {
                     <div className="flex-1">
                       <div className="font-medium">Exhaust PostgreSQL Connections</div>
                       <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
-                        {postgresIdleConnections !== null && postgresIdleConnections > 10 
-                          ? `Already exhausted (${postgresIdleConnections} idle)`
-                          : 'Create 12 idle connections'
+                        {hasActiveIncident('postgres')
+                          ? 'PostgreSQL incident active'
+                          : (postgresIdleConnections !== null && postgresIdleConnections > 10 
+                            ? `Already exhausted (${postgresIdleConnections} idle)`
+                            : 'Create 12 idle connections')
                         }
                       </div>
                     </div>
@@ -1588,22 +1759,22 @@ function App() {
                       // Close expanded card when triggering
                       if (expandedCardId) setExpandedCardId(null);
                     }}
-                    disabled={isTriggeringFailure}
+                    disabled={isTriggeringFailure || hasActiveIncident('postgres')}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
                       color: `rgb(var(--text-primary))`,
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       borderColor: `rgb(var(--border-color))`,
-                      opacity: isTriggeringFailure ? 0.5 : 1,
+                      opacity: (isTriggeringFailure || hasActiveIncident('postgres')) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (!isTriggeringFailure) {
+                      if (!isTriggeringFailure && !hasActiveIncident('postgres')) {
                         e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                         e.currentTarget.style.transform = 'scale(1.02)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!isTriggeringFailure) {
+                      if (!isTriggeringFailure && !hasActiveIncident('postgres')) {
                         e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                         e.currentTarget.style.transform = 'scale(1)';
                       }
@@ -1615,7 +1786,12 @@ function App() {
                     <div className="flex-1">
                       <div className="font-medium">Create PostgreSQL Bloat</div>
                       <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
-                        Generate dead tuples (needs VACUUM)
+                        {hasActiveIncident('postgres')
+                          ? 'PostgreSQL incident active'
+                          : (systemsHealth && systemsHealth['postgres-bloat']?.will_trigger_incident
+                            ? `Already bloated (${systemsHealth['postgres-bloat'].dead_ratio}% dead tuples)`
+                            : 'Generate dead tuples (needs VACUUM)')
+                        }
                       </div>
                     </div>
                   </button>
@@ -1626,22 +1802,22 @@ function App() {
                       // Close expanded card when triggering
                       if (expandedCardId) setExpandedCardId(null);
                     }}
-                    disabled={isTriggeringFailure}
+                    disabled={isTriggeringFailure || hasActiveIncident('disk-space')}
                     className="w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 rounded-lg border disabled:cursor-not-allowed mt-2"
                     style={{
                       color: `rgb(var(--text-primary))`,
                       backgroundColor: `rgb(var(--bg-secondary))`,
                       borderColor: `rgb(var(--border-color))`,
-                      opacity: isTriggeringFailure ? 0.5 : 1,
+                      opacity: (isTriggeringFailure || hasActiveIncident('disk-space')) ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (!isTriggeringFailure) {
+                      if (!isTriggeringFailure && !hasActiveIncident('disk-space')) {
                         e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
                         e.currentTarget.style.transform = 'scale(1.02)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!isTriggeringFailure) {
+                      if (!isTriggeringFailure && !hasActiveIncident('disk-space')) {
                         e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
                         e.currentTarget.style.transform = 'scale(1)';
                       }
@@ -1653,7 +1829,12 @@ function App() {
                     <div className="flex-1">
                       <div className="font-medium">Fill Disk Space</div>
                       <div className="text-xs" style={{ color: `rgb(var(--text-tertiary))` }}>
-                        Create large log files (needs cleanup)
+                        {hasActiveIncident('disk-space')
+                          ? 'Disk space incident active'
+                          : (systemsHealth && systemsHealth['disk-space']?.will_trigger_incident
+                            ? `Already full (${systemsHealth['disk-space'].used_percent.toFixed(1)}% used)`
+                            : 'Create large log files (needs cleanup)')
+                        }
                       </div>
                     </div>
                   </button>
@@ -1661,66 +1842,15 @@ function App() {
               )}
             </div>
             
-            <button 
-              onClick={handleToggleGenerator}
-              disabled={isTogglingGenerator || isFixingAll}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
-              style={{
-                backgroundColor: generatorRunning ? 'rgb(249, 115, 22)' : `rgb(var(--card-bg))`,
-                borderColor: 'rgb(249, 115, 22)',
-                color: generatorRunning ? 'white' : `rgb(var(--text-primary))`,
-              }}
-              onMouseEnter={(e) => {
-                if (!isTogglingGenerator && !generatorRunning) {
-                  e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!generatorRunning) {
-                  e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
-                }
-              }}
-            >
-              {isTogglingGenerator ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  {generatorRunning ? 'Stopping...' : 'Starting...'}
-                </>
-              ) : generatorRunning ? (
-                <>
-                  <span>⏸</span>
-                  Stop Generator
-                </>
-              ) : (
-                <>
-                  <span>▶</span>
-                  Start Generator
-                </>
-              )}
-            </button>
-
             {/* Reset Button */}
             <button 
               onClick={handleReset}
               disabled={isFixingAll}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border"
+              className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer border group"
               style={{
                 backgroundColor: `rgb(var(--card-bg))`,
-                borderColor: `rgb(var(--border-color))`,
+                borderColor: 'rgb(59, 130, 246)',
                 color: `rgb(var(--text-primary))`,
-              }}
-              onMouseEnter={(e) => {
-                if (!isFixingAll) {
-                  e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
-                  e.currentTarget.style.borderColor = 'rgb(59, 130, 246)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = `rgb(var(--card-bg))`;
-                e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
               }}
             >
               {isFixingAll ? (
@@ -1733,10 +1863,10 @@ function App() {
                 </>
               ) : (
                 <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'rgb(59, 130, 246)' }}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" style={{ stroke: 'rgb(59, 130, 246)' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Reset
+                  <span className="transition-colors duration-200 group-hover:text-[rgb(59,130,246)]">Reset</span>
                 </>
               )}
             </button>
@@ -1744,33 +1874,39 @@ function App() {
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg transition-all duration-200 flex items-center gap-2 hover:bg-theme-button-hover"
-              style={{
-                color: `rgb(var(--text-secondary))`,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = `rgb(var(--accent-primary))`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = `rgb(var(--text-secondary))`;
-              }}
+              className="group p-2 rounded-lg flex items-center gap-2 text-[rgb(var(--text-secondary))] cursor-pointer"
               title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
               {theme === 'light' ? (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 transition-colors duration-75 group-hover:stroke-[rgb(249,115,22)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                   </svg>
-                  <span className="text-xs">Light</span>
+                  <span className="text-xs transition-colors duration-75 group-hover:text-[rgb(249,115,22)]">Light</span>
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 transition-colors duration-75 group-hover:stroke-[rgb(249,115,22)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
-                  <span className="text-xs">Dark</span>
+                  <span className="text-xs transition-colors duration-75 group-hover:text-[rgb(249,115,22)]">Dark</span>
                 </>
               )}
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={() => {
+                sessionStorage.removeItem('authenticated');
+                setIsAuthenticated(false);
+              }}
+              className="group p-2 rounded-lg flex items-center gap-2 text-[rgb(var(--text-secondary))] cursor-pointer"
+              title="Logout"
+            >
+              <svg className="w-5 h-5 transition-colors duration-75 group-hover:stroke-[rgb(239,68,68)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span className="text-xs transition-colors duration-75 group-hover:text-[rgb(239,68,68)]">Logout</span>
             </button>
           </div>
         </div>
@@ -1781,7 +1917,7 @@ function App() {
         <section className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-semibold text-primary">Systems Health</h2>
+              <h2 className="text-xl font-medium text-primary">Systems Health</h2>
               <p className="text-sm text-secondary">Real-time status of monitored services</p>
             </div>
           </div>
@@ -1910,7 +2046,13 @@ function App() {
             )}
 
             {/* PostgreSQL Test Service Card */}
-            {systemsHealth && systemsHealth['postgres-test'] && (
+            {systemsHealth && systemsHealth['postgres-test'] && (() => {
+              // Calculate overall PostgreSQL health (minimum of connections and bloat)
+              const connHealth = systemsHealth['postgres-test'].health;
+              const bloatHealth = systemsHealth['postgres-bloat']?.health ?? 100;
+              const overallHealth = Math.min(connHealth, bloatHealth);
+              
+              return (
               <div 
                 className="rounded-lg p-5 border shrink-0"
                 style={{
@@ -1927,13 +2069,13 @@ function App() {
                     <div 
                       className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
                       style={{
-                        backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                        backgroundColor: overallHealth >= 70 
                           ? 'rgba(34, 197, 94, 0.1)' 
                           : 'rgba(239, 68, 68, 0.1)',
                       }}
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{
-                        color: systemsHealth['postgres-test'].health >= 70 
+                        color: overallHealth >= 70 
                           ? 'rgb(34, 197, 94)' 
                           : 'rgb(239, 68, 68)'
                       }}>
@@ -1951,11 +2093,11 @@ function App() {
                   {/* Health Score Badge */}
                   <div className="text-right">
                     <div className="text-2xl font-bold" style={{
-                      color: systemsHealth['postgres-test'].health >= 70 
+                      color: overallHealth >= 70 
                         ? 'rgb(34, 197, 94)' 
                         : 'rgb(239, 68, 68)'
                     }}>
-                      {systemsHealth['postgres-test'].health}%
+                      {overallHealth}%
                     </div>
                     <div className="text-xs text-secondary">Health</div>
                   </div>
@@ -1966,13 +2108,13 @@ function App() {
                   <div 
                     className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
                     style={{
-                      backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                      backgroundColor: overallHealth >= 70 
                         ? 'rgba(34, 197, 94, 0.1)' 
                         : 'rgba(239, 68, 68, 0.1)',
-                      color: systemsHealth['postgres-test'].health >= 70 
+                      color: overallHealth >= 70 
                         ? 'rgb(34, 197, 94)' 
                         : 'rgb(239, 68, 68)',
-                      border: `1px solid ${systemsHealth['postgres-test'].health >= 70 
+                      border: `1px solid ${overallHealth >= 70 
                         ? 'rgb(34, 197, 94)' 
                         : 'rgb(239, 68, 68)'}`,
                     }}
@@ -1980,38 +2122,39 @@ function App() {
                     <div 
                       className="w-1.5 h-1.5 rounded-full"
                       style={{
-                        backgroundColor: systemsHealth['postgres-test'].health >= 70 
+                        backgroundColor: overallHealth >= 70 
                           ? 'rgb(34, 197, 94)' 
                           : 'rgb(239, 68, 68)'
                       }}
                     />
-                    {systemsHealth['postgres-test'].health >= 70 ? 'Operational' : 'Degraded'}
+                    {overallHealth >= 70 ? 'Operational' : 'Degraded'}
                   </div>
                 </div>
 
-                {/* Metrics in a compact 2x2 grid */}
+                {/* Metrics in a compact 1x2 grid */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Idle Connections</div>
-                    <div className="text-base font-semibold text-primary">
-                      {systemsHealth['postgres-test'].idle_connections}
-                    </div>
-                    <div className="text-xs text-tertiary">
-                      {systemsHealth['postgres-test'].idle_ratio.toFixed(1)}% of total
-                    </div>
-                  </div>
                   <div>
                     <div className="text-xs text-secondary mb-1">Connection Pool</div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['postgres-test'].total_connections}/{systemsHealth['postgres-test'].max_connections}
                     </div>
                     <div className="text-xs text-tertiary">
-                      {systemsHealth['postgres-test'].active_connections} active
+                      {systemsHealth['postgres-test'].idle_connections} idle ({systemsHealth['postgres-test'].idle_ratio.toFixed(1)}%)
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Table Bloat</div>
+                    <div className="text-base font-semibold text-primary">
+                      {systemsHealth['postgres-bloat']?.dead_ratio?.toFixed(1) ?? 0}%
+                    </div>
+                    <div className="text-xs text-tertiary">
+                      {systemsHealth['postgres-bloat']?.dead_tuples?.toLocaleString() ?? 0} dead tuples
                     </div>
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Disk Space Service Card */}
             {systemsHealth && systemsHealth['disk-space'] && (
@@ -2143,36 +2286,71 @@ function App() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-baseline gap-2">
-              <h2 className="text-2xl font-semibold text-primary">Active incidents</h2>
-              <span className="text-sm text-secondary font-medium">
+              <h2 className="text-xl font-medium text-primary">Active incidents</h2>
+              <span className="text-sm font-medium text-primary">
                 {totalIncidents}
               </span>
             </div>
             <div className="flex items-center gap-3">
               <button 
-                onClick={() => setShowResolvedPanel(true)}
+                onClick={() => setShowCreateModal(true)}
                 disabled={isFixingAll}
-                className="text-sm flex items-center gap-1 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-sm flex items-center gap-2 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed py-2 rounded-lg border transition-all duration-200 ease-in-out font-medium"
                 style={{
-                  color: `rgb(var(--text-secondary))`
+                  backgroundColor: 'rgb(249, 115, 22)',
+                  borderColor: 'rgb(249, 115, 22)',
+                  color: 'white',
+                  paddingLeft: '16px',
+                  paddingRight: '20px'
                 }}
                 onMouseEnter={(e) => {
                   if (!isFixingAll) {
-                    e.currentTarget.style.color = 'rgb(249, 115, 22)';
+                    e.currentTarget.style.backgroundColor = 'rgb(234, 88, 12)';
+                    e.currentTarget.style.borderColor = 'rgb(234, 88, 12)';
                   }
                 }}
                 onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgb(249, 115, 22)';
+                  e.currentTarget.style.borderColor = 'rgb(249, 115, 22)';
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="white" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create Incident
+              </button>
+              <button 
+                onClick={() => setShowResolvedPanel(true)}
+                disabled={isFixingAll}
+                className="text-sm flex items-center gap-2 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg border transition-all duration-500 ease-in-out font-medium"
+                style={{
+                  borderColor: `rgb(var(--border-color))`,
+                  color: `rgb(var(--text-primary))`
+                }}
+                onMouseEnter={(e) => {
                   if (!isFixingAll) {
-                    e.currentTarget.style.color = `rgb(var(--text-secondary))`;
+                    e.currentTarget.style.borderColor = 'rgb(255, 140, 0)';
+                    const svgElement = e.currentTarget.querySelector('svg');
+                    if (svgElement) {
+                      (svgElement as SVGElement).style.stroke = 'rgb(255, 140, 0)';
+                    }
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = `rgb(var(--border-color))`;
+                  const svgElement = e.currentTarget.querySelector('svg');
+                  if (svgElement) {
+                    (svgElement as SVGElement).style.stroke = '';
                   }
                 }}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ transition: 'none' }}>
+                <svg className="w-4 h-4 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                View Resolved ({resolvedIncidents.length})
+                <span className="transition-colors duration-200 group-hover:text-[rgb(255,140,0)]">
+                  View Resolved ({resolvedIncidents.length})
+                </span>
               </button>
-              <button className="text-sm text-secondary hover:text-primary transition-colors">View all</button>
             </div>
           </div>
 
@@ -2215,6 +2393,7 @@ function App() {
           onClose={handleCloseModal}
           onSolutionUpdate={handleSolutionUpdate}
           onStatusUpdate={handleStatusUpdate}
+          onShowSuccessToast={showSuccessToast}
         />
       )}
 
@@ -2223,6 +2402,13 @@ function App() {
         isOpen={showResolvedPanel}
         onClose={() => setShowResolvedPanel(false)}
         incidents={resolvedIncidents}
+      />
+
+      {/* Create Incident Modal */}
+      <CreateIncidentModal 
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={handleCreateIncident}
       />
 
       {/* Full-page blocking overlay while fixing all incidents */}
@@ -2261,6 +2447,348 @@ function App() {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Success Toast Notification */}
+      {successToast && (
+        <div 
+          className={`fixed left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 ${
+            isToastFadingOut ? 'animate-fade-out' : 'animate-fade-in'
+          }`}
+          style={{
+            backgroundColor: 'rgb(34, 197, 94)',
+            color: 'white',
+            zIndex: 100000,
+            top: '24px',
+          }}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="font-medium">{successToast}</span>
+        </div>
+      )}
+
+      {/* Guide Modal */}
+      {showGuideModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ 
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            overflow: 'hidden',
+            overscrollBehavior: 'contain'
+          }}
+          onClick={() => setShowGuideModal(false)}
+          onWheel={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <div
+            className="rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+            style={{ 
+              backgroundColor: `rgb(var(--card-bg))`,
+              overscrollBehavior: 'contain'
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-4 border-b" style={{ borderColor: `rgb(var(--border-color))` }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <h2 className="text-2xl font-bold text-primary">Incident Management Simulator - Guide</h2>
+                </div>
+                <button
+                  onClick={() => setShowGuideModal(false)}
+                  className="p-2 rounded-lg hover:bg-opacity-10 transition-colors duration-200"
+                  style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-6 space-y-6">
+              {/* Overview */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  What is this?
+                </h3>
+                <p className="text-secondary leading-relaxed">
+                  This is an <span className="font-semibold text-primary">Incident Management Simulator</span> designed to demonstrate incident response workflows. 
+                  It simulates real-world system failures and provides an AI-powered SRE agent that can automatically diagnose and remediate issues.
+                </p>
+              </section>
+
+              {/* Key Features */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  Key Features
+                </h3>
+                <ul className="space-y-2 text-secondary">
+                  <li className="flex items-start gap-2">
+                    <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span><strong>Mock Systems:</strong> Redis, PostgreSQL, and Disk Space monitoring with realistic failure scenarios</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span><strong>AI-Powered Diagnosis:</strong> Get instant AI analysis of incidents with severity, diagnosis, and suggested solutions</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span><strong>Automated Remediation:</strong> SRE agents can automatically fix issues with your approval</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span><strong>Kanban-Style Board:</strong> Track incidents through Triage → Investigating → Fixing → Resolved</span>
+                  </li>
+                </ul>
+              </section>
+
+              {/* How to Use */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  How to Use
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">1. Generate or Create Incidents</h4>
+                    <ul className="ml-4 space-y-1 text-secondary">
+                      <li>• <strong>Generate Incident:</strong> Creates a random synthetic incident for practice</li>
+                      <li>• <strong>Create Incident:</strong> Manually create an incident with custom details</li>
+                      <li>• <strong>Trigger Failure:</strong> Inject real failures into mock systems (Redis, PostgreSQL, Disk Space)</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">2. Manage Incidents</h4>
+                    <ul className="ml-4 space-y-1 text-secondary">
+                      <li>• Click on any incident card to expand and view more details</li>
+                      <li>• Click the expand icon to open the full modal view</li>
+                      <li>• Use <strong>Get AI Diagnosis</strong> for instant analysis of the incident</li>
+                      <li>• Use <strong>Get AI Solution</strong> for recommended fixes with confidence scores</li>
+                      <li>• Change incident status using the <strong>Update Status</strong> dropdown</li>
+                      <li>• Change severity using the <strong>Change Severity</strong> dropdown</li>
+                      <li>• Assign incidents to different teams using <strong>Change Team</strong></li>
+                      <li>• Add notes to track your investigation progress</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">3. Automated Remediation (Agent Ready Incidents)</h4>
+                    <ul className="ml-4 space-y-1 text-secondary">
+                      <li>• Look for incidents with the <span className="text-orange-500">Agent Ready</span> badge</li>
+                      <li>• Click <strong>Start SRE Agent Remediation</strong> to let the AI fix it</li>
+                      <li>• The agent will analyse, propose commands, and wait for your approval</li>
+                      <li>• Review the proposed fix and click <strong>Approve & Execute</strong> or <strong>Reject</strong></li>
+                      <li>• Watch as the agent executes commands and verifies the fix</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">4. Monitor System Health</h4>
+                    <ul className="ml-4 space-y-1 text-secondary">
+                      <li>• Check the <strong>Systems Health</strong> section for real-time status</li>
+                      <li>• Green = Healthy, Red = Critical issue detected</li>
+                      <li>• Use <strong>Reset All</strong> to restore mock systems and clear all incidents</li>
+                      <li>• View past incidents and their outcomes in the <strong>Resolved</strong> section</li>
+                    </ul>
+                  </div>
+                </div>
+              </section>
+
+              {/* Incident Types */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  Incident Types
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-4 h-4" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span className="font-semibold text-primary">Synthetic</span>
+                    </div>
+                    <p className="text-sm text-secondary">Practice incidents generated for training purposes</p>
+                  </div>
+                  <div className="p-4 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-4 h-4" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                      </svg>
+                      <span className="font-semibold text-primary">Agent Ready</span>
+                    </div>
+                    <p className="text-sm text-secondary">Real system failures that can be automatically remediated</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Tips */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Pro Tips
+                </h3>
+                <ul className="space-y-2 text-secondary">
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>Use filters (Severity, Team) to focus on specific types of incidents</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>Try triggering failures on mock systems to experience the full SRE agent remediation workflow</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>Add notes during investigation to document your incident response process</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>View the Resolved section to see agent remediation history and status timelines</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-500">→</span>
+                    <span>AI diagnosis and solutions are powered by Groq (fast) with Gemini fallback (accurate)</span>
+                  </li>
+                </ul>
+              </section>
+
+              {/* Architecture & Tech Stack */}
+              <section>
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="rgb(249, 115, 22)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                  </svg>
+                  How It Works (Behind the Scenes)
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">Architecture</h4>
+                    <p className="text-secondary text-sm mb-3">
+                      The simulator uses a microservices architecture with real-time communication between components:
+                    </p>
+                    <ul className="ml-4 space-y-2 text-secondary text-sm">
+                      <li>• <strong>Frontend:</strong> React + TypeScript with Vite, real-time WebSocket updates</li>
+                      <li>• <strong>Backend:</strong> Go with PostgreSQL for incident storage and state management</li>
+                      <li>• <strong>AI Services:</strong> Groq (LLaMA) for fast inference, Gemini for complex reasoning</li>
+                      <li>• <strong>Health Monitor:</strong> Python service monitoring mock systems and triggering incidents</li>
+                      <li>• <strong>Mock Systems:</strong> Containerized Redis, PostgreSQL, and disk space services</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">SRE Agent Workflow</h4>
+                    <p className="text-secondary text-sm mb-3">
+                      The AI agent uses a constrained action space for safe automated remediation:
+                    </p>
+                    <div className="ml-4 space-y-2 text-secondary text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">1.</span>
+                        <span><strong>Thinking Phase:</strong> AI analyses incident data and system state using LLaMA 70B</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">2.</span>
+                        <span><strong>Action Selection:</strong> AI chooses from pre-defined safe commands (cache clear, connection kill, VACUUM, disk cleanup, service restart)</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">3.</span>
+                        <span><strong>Human-in-the-Loop:</strong> Presents plan to user for approval before execution</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">4.</span>
+                        <span><strong>Execution:</strong> Runs approved commands via Docker exec against mock containers</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold">5.</span>
+                        <span><strong>Verification:</strong> Polls health metrics to confirm the system is restored</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">Mock System Failures</h4>
+                    <p className="text-secondary text-sm mb-2">
+                      Each mock system simulates real production issues:
+                    </p>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-primary text-sm">Redis</span>
+                        </div>
+                        <p className="text-xs text-secondary">Memory exhaustion via `DEBUG POPULATE` → Fixed with `FLUSHALL`</p>
+                      </div>
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-primary text-sm">PostgreSQL</span>
+                        </div>
+                        <p className="text-xs text-secondary">Idle connection exhaustion or table bloat → Fixed with connection cleanup or `VACUUM`</p>
+                      </div>
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: `rgb(var(--bg-tertiary))` }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-primary text-sm">Disk Space</span>
+                        </div>
+                        <p className="text-xs text-secondary">tmpfs volume filled with test files → Cleared by cleanup script</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-primary mb-2">Safety & Constraints</h4>
+                    <p className="text-secondary text-sm">
+                      The system is designed with safety in mind: incidents are marked as "synthetic" or "agent_ready", 
+                      the agent only acts on mock systems in isolated Docker containers, all commands are pre-approved and constrained, 
+                      and human approval is required before any execution.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Toast */}
+      {errorToast && (
+        <div 
+          className="fixed bottom-8 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg text-white font-medium text-sm z-[100000]"
+          style={{
+            backgroundColor: 'rgb(239, 68, 68)',
+            opacity: isErrorToastFadingOut ? 0 : 1,
+            transition: 'opacity 0.4s ease-in-out',
+          }}
+        >
+          {errorToast}
         </div>
       )}
     </div>

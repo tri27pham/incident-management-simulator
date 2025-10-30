@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -33,6 +34,15 @@ func CreateIncident(incident *models.Incident) error {
 			tx.Rollback()
 		}
 	}()
+
+	// Set CreatedAt and UpdatedAt if not already set
+	now := time.Now()
+	if incident.CreatedAt.IsZero() {
+		incident.CreatedAt = now
+	}
+	if incident.UpdatedAt.IsZero() {
+		incident.UpdatedAt = now
+	}
 
 	// Create the incident
 	if err := tx.Create(incident).Error; err != nil {
@@ -144,6 +154,76 @@ func UpdateIncidentNotes(id uuid.UUID, notes string) (*models.Incident, error) {
 	}
 
 	log.Printf("✅ Updated incident %s notes", incident.ID)
+	return &incident, nil
+}
+
+func UpdateIncidentSeverity(id uuid.UUID, severity string) (*models.Incident, error) {
+	var incident models.Incident
+	if err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error; err != nil {
+		return nil, err // Incident not found
+	}
+
+	// Update severity in the analysis (create one if it doesn't exist)
+	if incident.Analysis != nil {
+		incident.Analysis.Severity = severity
+		if err := db.DB.Save(&incident.Analysis).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		// Create analysis if it doesn't exist
+		analysis := models.IncidentAnalysis{
+			IncidentID: incident.ID,
+			Severity:   severity,
+			Confidence: 1.0,
+		}
+		if err := db.DB.Create(&analysis).Error; err != nil {
+			return nil, err
+		}
+
+		// Reload incident with the new analysis
+		if err := db.DB.
+			Preload("Analysis").
+			Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+				return db.Order("incident_status_history.changed_at ASC")
+			}).
+			First(&incident, id).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	// Broadcast the update to all connected clients
+	BroadcastIncidentUpdate(id)
+	log.Printf("✅ Updated incident %s severity to %s", incident.ID, severity)
+
+	return &incident, nil
+}
+
+func UpdateIncidentTeam(id uuid.UUID, team string) (*models.Incident, error) {
+	var incident models.Incident
+	if err := db.DB.
+		Preload("Analysis").
+		Preload("StatusHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Order("incident_status_history.changed_at ASC")
+		}).
+		First(&incident, id).Error; err != nil {
+		return nil, err // Incident not found
+	}
+
+	// Update team
+	incident.Team = team
+	if err := db.DB.Save(&incident).Error; err != nil {
+		return nil, err
+	}
+
+	// Broadcast the update to all connected clients
+	BroadcastIncidentUpdate(id)
+	log.Printf("✅ Updated incident %s team to %s", incident.ID, team)
+
 	return &incident, nil
 }
 
@@ -309,7 +389,7 @@ func TriggerAIDiagnosis(incidentID uuid.UUID) (models.IncidentAnalysis, error) {
 
 	log.Printf("🔍 TriggerAIDiagnosis: Starting for incident %s", incidentID.String()[:8])
 
-	// 1. Find the incident to be analyzed.
+	// 1. Find the incident to be analysed.
 	if err := db.DB.First(&incident, incidentID).Error; err != nil {
 		log.Printf("❌ TriggerAIDiagnosis: Incident %s not found: %v", incidentID.String()[:8], err)
 		return analysis, fmt.Errorf("incident not found: %w", err)
@@ -446,10 +526,15 @@ func GenerateRandomIncident() (models.Incident, error) {
 		return models.Incident{}, fmt.Errorf("failed to parse incident data from AI: %w", err)
 	}
 
+	// Randomly assign a team to make the distribution more realistic
+	teams := []string{"Platform", "Frontend", "Backend", "Data", "Infrastructure"}
+	randomTeam := teams[rand.Intn(len(teams))]
+
 	return models.Incident{
 		Message:         incidentData.Message,
 		Source:          incidentData.Source,
 		Status:          "triage",
+		Team:            randomTeam,            // Randomly assign a team
 		GeneratedBy:     incidentData.Provider, // Track which AI generated this
 		MetricsSnapshot: "{}",                  // Empty JSON object for manually generated incidents
 		// Classification: mark AI-generated incidents as synthetic (not actionable by agents)

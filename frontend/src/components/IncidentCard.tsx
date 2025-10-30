@@ -1,8 +1,54 @@
 import { Draggable } from 'react-beautiful-dnd';
 import { Incident } from '../types';
-import { SeverityBars } from './SeverityBars';
 import { useState, useEffect, useRef } from 'react';
 import { triggerDiagnosis, triggerSuggestedFix } from '../services/api';
+
+const severityConfig = {
+  high: { 
+    label: 'High', 
+    backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+    color: 'rgb(239, 68, 68)', 
+    borderColor: 'rgb(239, 68, 68)',
+    icon: (
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    )
+  },
+  medium: { 
+    label: 'Medium', 
+    backgroundColor: 'rgba(249, 115, 22, 0.1)', 
+    color: 'rgb(249, 115, 22)', 
+    borderColor: 'rgb(249, 115, 22)',
+    icon: (
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    )
+  },
+  low: { 
+    label: 'Low', 
+    backgroundColor: 'rgba(234, 179, 8, 0.1)', 
+    color: 'rgb(234, 179, 8)', 
+    borderColor: 'rgb(234, 179, 8)',
+    icon: (
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    )
+  },
+  undiagnosed: { 
+    label: 'Undiagnosed', 
+    backgroundColor: 'rgba(156, 163, 175, 0.1)', 
+    color: 'rgb(156, 163, 175)', 
+    borderColor: 'rgb(156, 163, 175)',
+    icon: (
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    )
+  },
+};
 
 interface IncidentCardProps {
   item: Incident;
@@ -11,7 +57,7 @@ interface IncidentCardProps {
   onToggleExpand: (id: string) => void;
   onOpenModal: (incident: Incident) => void;
   onDiagnosisUpdate: (id: string, diagnosis: string) => void;
-  onSolutionUpdate: (id: string, solution: string) => void;
+  onSolutionUpdate: (id: string, solution: string, confidence?: number, solutionProvider?: 'gemini' | 'groq' | 'error' | 'unknown') => void;
 }
 
 export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenModal, onDiagnosisUpdate, onSolutionUpdate }: IncidentCardProps) {
@@ -20,6 +66,11 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
   const [isWaitingForAutoDiagnosis, setIsWaitingForAutoDiagnosis] = useState(!item.hasDiagnosis && !item.hasSolution);
   const [isGettingSolution, setIsGettingSolution] = useState(false);
   const [solutionError, setSolutionError] = useState<string | null>(null);
+
+  // Check if incident is resolved
+  const isResolved = item.statusHistory && item.statusHistory.length > 0 
+    ? item.statusHistory[item.statusHistory.length - 1].status === 'Resolved'
+    : false;
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't trigger if clicking the modal button or diagnosis button
@@ -132,7 +183,7 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
       if (isErrorMessage) {
         setSolutionError(analysis.solution);
       } else if (analysis.solution && analysis.solution.length > 10) {
-        onSolutionUpdate(item.id, analysis.solution);
+        onSolutionUpdate(item.id, analysis.solution, analysis.confidence, analysis.solution_provider as 'gemini' | 'groq' | 'error' | 'unknown');
       } else {
         setSolutionError('Failed to get solution. Please try again.');
       }
@@ -173,18 +224,25 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {/* Subtle agent classification icons */}
               {item.actionable && item.incidentType === 'real_system' && (
                 <span 
-                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
-                  title="AI Agent Ready - can take automated actions"
+                  className="opacity-60 hover:opacity-100 transition-opacity"
+                  title="SRE Agent Ready - can take automated actions"
+                  style={{ color: 'rgb(249, 115, 22)' }}
                 >
-                  🤖
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
                 </span>
               )}
               {item.incidentType === 'synthetic' && (
                 <span 
-                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  className="opacity-60 hover:opacity-100 transition-opacity"
                   title="Synthetic - training scenario"
+                  style={{ color: 'rgb(249, 115, 22)' }}
                 >
-                  📝
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                 </span>
               )}
               {item.incidentType === 'training' && (
@@ -196,11 +254,15 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
                 </span>
               )}
               {item.remediationMode === 'manual' && (
-                <span 
-                  className="text-sm opacity-60 hover:opacity-100 transition-opacity"
-                  title="Manual remediation required"
-                >
-                  👤
+                <span title="Manual remediation required">
+                  <svg 
+                    className="w-4 h-4 opacity-60 hover:opacity-100 transition-opacity"
+                    fill="none" 
+                    stroke="rgb(249, 115, 22)" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
                 </span>
               )}
             </div>
@@ -260,7 +322,9 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {!item.hasDiagnosis && !item.hasSolution && !isWaitingForAutoDiagnosis && !isDiagnosing && (
                 <button
                   onClick={handleGetDiagnosis}
-                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2"
+                  disabled={isResolved}
+                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ cursor: isResolved ? 'not-allowed' : 'pointer' }}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -295,7 +359,9 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {item.hasDiagnosis && !item.hasSolution && !isGettingSolution && (
                 <button
                   onClick={handleGetSolution}
-                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2"
+                  disabled={isResolved}
+                  className="diagnosis-button w-full mt-2 px-3 py-2 bg-linear-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ cursor: isResolved ? 'not-allowed' : 'pointer' }}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -352,7 +418,19 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
           
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs">
-              <SeverityBars severity={item.severity} />
+              {item.severity && severityConfig[item.severity] && (
+                <span 
+                  className="px-2 py-0.5 rounded text-xs flex items-center gap-1"
+                  style={{ 
+                    backgroundColor: severityConfig[item.severity].backgroundColor, 
+                    color: severityConfig[item.severity].color, 
+                    border: `1px solid ${severityConfig[item.severity].borderColor}` 
+                  }}
+                >
+                  {severityConfig[item.severity].icon}
+                  <span>{severityConfig[item.severity].label}</span>
+                </span>
+              )}
               <span className="team-badge px-2 py-0.5 rounded text-xs border" style={{ borderColor: 'rgb(249, 115, 22)', color: 'rgb(249, 115, 22)', backgroundColor: 'transparent' }}>
                 {item.team}
               </span>
@@ -362,15 +440,15 @@ export function IncidentCard({ item, index, isExpanded, onToggleExpand, onOpenMo
               {isExpanded && (
                 <button
                   onClick={handleModalOpen}
-                  className="modal-trigger p-1.5 rounded transition-colors"
+                  className="modal-trigger p-1.5 rounded transition-colors cursor-pointer"
                   style={{
-                    backgroundColor: `rgb(var(--bg-secondary))`,
+                    backgroundColor: 'transparent',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = `rgb(var(--bg-tertiary))`;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = `rgb(var(--bg-secondary))`;
+                    e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                   title="Expand to full view"
                 >

@@ -24,12 +24,12 @@
 [data-theme="dark"] {
   /* Dark Theme */
   --bg-primary: 15 15 15; /* Almost black #0f0f0f */
-  --bg-secondary: 28 28 28; /* Dark gray #1c1c1c */
+  --bg-secondary: 50 50 50; /* Even brighter dark gray #323232 */
   --bg-tertiary: 20 20 20; /* Very subtle, closer to bg-primary #141414 */
   --text-primary: 243 244 246; /* gray-100 - light text */
   --text-secondary: 209 213 219; /* gray-300 */
   --text-tertiary: 156 163 175; /* gray-400 */
-  --border-color: 48 48 48; /* Dark border #303030 */
+  --border-color: 70 70 70; /* Brighter dark border #464646 */
   --accent-primary: 249 115 22; /* orange-600 */
   --accent-secondary: 251 146 60; /* orange-400 */
   --accent-hover: 234 88 12; /* orange-700 */
@@ -219,23 +219,115 @@ body *:not(.no-theme-transition) {
   }
 }
 
-/* Custom scrollbar styling for webkit browsers */
+/* Toast fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    top: -20px;
+  }
+  to {
+    opacity: 1;
+    top: 24px;
+  }
+}
+
+/* Toast fade-out animation */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    top: 24px;
+  }
+  to {
+    opacity: 0;
+    top: -20px;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.4s ease-in forwards;
+}
+
+/* Universal scrollbar styling (Firefox + Safari 15.4+ + Chrome) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(229, 231, 235, 0.3) transparent;
+}
+
+[data-theme="dark"] * {
+  scrollbar-color: rgba(75, 85, 99, 0.4) transparent;
+}
+
+/* Custom scrollbar styling for webkit browsers (Chrome + Safari) */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 8px !important;
+  height: 8px !important;
+  -webkit-appearance: none !important;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: transparent !important;
+  -webkit-appearance: none !important;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--border-color));
-  border-radius: 4px;
+  background: rgba(229, 231, 235, 0.3) !important;
+  border-radius: 4px !important;
+  -webkit-appearance: none !important;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--text-tertiary));
+  background: rgba(229, 231, 235, 0.5) !important;
+}
+
+/* Dark mode scrollbar adjustment */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.4) !important;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.6) !important;
+}
+
+/* Modal scroll pane specific styling - override global */
+.modal-scroll-pane {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(229, 231, 235, 0.3) transparent !important;
+}
+
+div.modal-scroll-pane::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+div.modal-scroll-pane::-webkit-scrollbar-track {
+  background: transparent !important;
+  border-radius: 4px !important;
+}
+
+div.modal-scroll-pane::-webkit-scrollbar-thumb {
+  background-color: rgba(229, 231, 235, 0.3) !important;
+  border-radius: 4px !important;
+  border: none !important;
+}
+
+div.modal-scroll-pane::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(229, 231, 235, 0.5) !important;
+}
+
+[data-theme="dark"] .modal-scroll-pane {
+  scrollbar-color: rgba(75, 85, 99, 0.4) transparent !important;
+}
+
+[data-theme="dark"] div.modal-scroll-pane::-webkit-scrollbar-thumb {
+  background-color: rgba(75, 85, 99, 0.4) !important;
+}
+
+[data-theme="dark"] div.modal-scroll-pane::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(107, 114, 128, 0.6) !important;
 }
 
 /* Backdrop blur support */

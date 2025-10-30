@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/db"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/models"
-	ws "github.com/tri27pham/incident-management-simulator/backend/internal/websocket"
+	"github.com/tri27pham/incident-management-simulator/backend/internal/services"
 )
 
 // AgentService handles AI-powered incident remediation
@@ -85,7 +85,14 @@ func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExec
 		return
 	}
 
-	// Complete
+	// Check if verification passed - if not, mark as failed
+	if execution.VerificationPassed == nil || !*execution.VerificationPassed {
+		log.Printf("❌ [Agent] Verification failed - marking execution as failed")
+		s.failExecution(execution, "Verification checks failed. System did not return to healthy state.")
+		return
+	}
+
+	// Complete successfully
 	success := true
 	execution.Success = &success
 	execution.Status = models.StatusCompleted
@@ -93,7 +100,7 @@ func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExec
 	*execution.CompletedAt = time.Now()
 	db.DB.Save(execution)
 
-	// If remediation was successful and verification passed, resolve the incident
+	// Verification passed, resolve the incident
 	if execution.VerificationPassed != nil && *execution.VerificationPassed {
 		log.Printf("🎯 [Agent] Verification passed - marking incident as resolved")
 
@@ -102,6 +109,7 @@ func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExec
 			IncidentID: incident.ID,
 			FromStatus: &incident.Status,
 			ToStatus:   "resolved",
+			ChangedAt:  time.Now(),
 		}
 
 		// Update incident status to resolved
@@ -120,8 +128,8 @@ func (s *AgentService) continueWorkflowAfterApproval(execution *models.AgentExec
 			tx.Commit()
 			log.Printf("✅ [Agent] Incident %s automatically resolved (%s → resolved)", incident.ID.String()[:8], oldStatus)
 
-			// Broadcast the status change via WebSocket
-			ws.WSHub.Broadcast <- incident
+			// Broadcast the status change via WebSocket (use BroadcastIncidentUpdate to include StatusHistory)
+			services.BroadcastIncidentUpdate(incident.ID)
 			log.Printf("📡 [Agent] Broadcasted incident resolution to WebSocket clients")
 		}
 	} else {
@@ -155,46 +163,84 @@ func (s *AgentService) runWorkflow(execution *models.AgentExecution, incident *m
 	// Workflow will be resumed by ApproveExecution handler
 }
 
-// phaseThinking: AI analyzes the incident and decides what action to take
+// phaseThinking: AI analyses the incident and decides what action to take
 func (s *AgentService) phaseThinking(execution *models.AgentExecution, incident *models.Incident) error {
 	log.Printf("🧠 [Agent] Phase 1: Thinking...")
 
 	execution.Status = models.StatusThinking
 	db.DB.Save(execution)
 
-	// Call AI to analyze incident and recommend action
-	prompt := fmt.Sprintf(`You are an AI agent analyzing a system incident.
+	// Call AI to analyse incident and recommend action
+	prompt := fmt.Sprintf(`You are an expert SRE AI agent analyzing a production system incident. Your job is to diagnose the problem and select the best remediation action.
 
+INCIDENT DETAILS:
 Incident: %s
 Source: %s
 Affected Systems: %v
 
-Analyze this incident and recommend a remediation action.
-You can ONLY use these available actions:
-- "clear_redis_cache" - Clear all keys from Redis to free up memory (best for memory exhaustion)
-- "restart_redis" - Restart the Redis container to recover from error state
-- "kill_idle_connections" - Kill idle PostgreSQL connections to free up connection pool (best for connection exhaustion)
-- "vacuum_table" - Run VACUUM on PostgreSQL table to remove dead tuples and reduce bloat (best for table bloat/dead tuple issues)
-- "restart_postgres" - Restart the PostgreSQL container to recover from connection issues
-- "cleanup_old_logs" - Delete old log files to free up disk space (best for disk space issues)
+AVAILABLE REMEDIATION ACTIONS:
+You can ONLY choose from these pre-approved actions:
 
-Choose the action that best addresses the issue. 
-- For Redis memory problems, use clear_redis_cache
-- For PostgreSQL connection pool problems, use kill_idle_connections
-- For PostgreSQL table bloat/dead tuples, use vacuum_table
-- For disk space problems, use cleanup_old_logs
+1. "clear_redis_cache" - Clears all keys from Redis using FLUSHALL
+   - Impact: Immediate memory recovery, ~1-2 second operation
+   - Risk: Active sessions/cached data will be lost (medium severity)
+   - Use when: Redis memory is critically high but service is responsive
 
-Respond ONLY in valid JSON:
+2. "restart_redis" - Restarts the Redis container 
+   - Impact: 2-3 second downtime, complete service interruption
+   - Risk: Brief outage for all Redis-dependent services (high severity)
+   - Use when: Redis is unresponsive, crashed, or in an error state that cache clearing won't fix
+
+3. "kill_idle_connections" - Terminates idle PostgreSQL connections
+   - Impact: Frees connection slots immediately, no query interruption
+   - Risk: Minimal, only idle connections affected (low severity)
+   - Use when: Connection pool is exhausted but active queries are fine
+
+4. "vacuum_table" - Runs VACUUM ANALYZE on PostgreSQL tables
+   - Impact: Reclaims dead tuple space, updates statistics, brief performance impact
+   - Risk: Table remains accessible, slight performance degradation during operation (low severity)
+   - Use when: Table bloat from dead tuples is degrading performance
+
+5. "restart_postgres" - Restarts the PostgreSQL container
+   - Impact: 2-3 second downtime, all connections dropped
+   - Risk: Brief outage for database-dependent services (medium-high severity)
+   - Use when: PostgreSQL is unresponsive or in a corrupted state that lighter fixes won't resolve
+
+6. "cleanup_old_logs" - Deletes old log files to free disk space
+   - Impact: Immediate disk space recovery, no service impact
+   - Risk: Historical logs lost (low severity - test logs only)
+   - Use when: Disk space is critically low
+
+DECISION CRITERIA:
+- Analyze the incident message, source, and affected systems
+- Consider the severity and urgency of the issue
+- Choose the LEAST disruptive action that will effectively resolve the problem
+- Prefer targeted fixes (e.g., kill_idle_connections) over nuclear options (e.g., restart_postgres)
+- Consider: Will this fix actually resolve the root cause, or just temporarily mask it?
+
+Respond ONLY in valid JSON format:
 {
-  "analysis": "brief technical analysis of the root cause",
-  "recommended_action": "clear_redis_cache" or "restart_redis" or "kill_idle_connections" or "vacuum_table" or "restart_postgres" or "cleanup_old_logs",
-  "reasoning": "why this action will fix the issue"
+  "analysis": "detailed technical analysis of the root cause and current system state",
+  "recommended_action": "one of the 6 action names above",
+  "reasoning": "explain why this specific action is the best choice given the tradeoffs"
 }`, incident.Message, incident.Source, incident.AffectedSystems)
 
 	response, err := s.callAI(prompt)
 	if err != nil {
 		return fmt.Errorf("AI call failed: %w", err)
 	}
+
+	// Try to extract JSON from response (AI might return text + JSON)
+	jsonStart := strings.Index(response, "{")
+	jsonEnd := strings.LastIndex(response, "}")
+
+	if jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart {
+		log.Printf("❌ [Agent] Invalid AI response format (no JSON found): %s", response)
+		return fmt.Errorf("AI response does not contain valid JSON")
+	}
+
+	jsonResponse := response[jsonStart : jsonEnd+1]
+	log.Printf("🔍 [Agent] Extracted JSON: %s", jsonResponse)
 
 	// Parse response
 	var result struct {
@@ -203,7 +249,8 @@ Respond ONLY in valid JSON:
 		Reasoning         string `json:"reasoning"`
 	}
 
-	if err := json.Unmarshal([]byte(response), &result); err != nil {
+	if err := json.Unmarshal([]byte(jsonResponse), &result); err != nil {
+		log.Printf("❌ [Agent] Failed to parse JSON: %s", jsonResponse)
 		return fmt.Errorf("failed to parse AI response: %w", err)
 	}
 

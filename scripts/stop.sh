@@ -66,6 +66,11 @@ if docker ps 2>/dev/null | grep -q redis-test; then
     echo "   ✓ Redis test stopped"
 fi
 
+if docker ps 2>/dev/null | grep -q postgres-test; then
+    docker stop postgres-test 2>/dev/null || true
+    echo "   ✓ Postgres test stopped"
+fi
+
 if docker ps 2>/dev/null | grep -q health-monitor; then
     docker stop health-monitor health-monitor-standalone 2>/dev/null || true
     docker rm health-monitor health-monitor-standalone 2>/dev/null || true
