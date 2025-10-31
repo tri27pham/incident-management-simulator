@@ -18,7 +18,7 @@ func main() {
 	}
 
 	db.ConnectDatabase()
-	db.DB.AutoMigrate(&models.Incident{}, &models.IncidentAnalysis{})
+	db.DB.AutoMigrate(&models.Incident{}, &models.IncidentAnalysis{}, &models.StatusHistory{}, &models.AgentExecution{})
 
 	// Start the WebSocket hub in a separate goroutine
 	go websocket.WSHub.Run()
