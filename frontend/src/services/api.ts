@@ -258,7 +258,13 @@ export async function getGeneratorStatus(): Promise<{ is_running: boolean }> {
 }
 
 // Health Monitor API - Trigger failures
-const HEALTH_MONITOR_URL = import.meta.env.VITE_HEALTH_MONITOR_URL || 'http://localhost:8002';
+// Derive health monitor URL from API URL (same host, different port)
+const getHealthMonitorUrl = () => {
+  // Extract host and protocol from API URL and use port 8002
+  const apiUrl = new URL(API_BASE_URL);
+  return `${apiUrl.protocol}//${apiUrl.hostname}:8002`;
+};
+const HEALTH_MONITOR_URL = getHealthMonitorUrl();
 
 export async function clearRedis(): Promise<{ status: string; message: string }> {
   const response = await fetch(`${HEALTH_MONITOR_URL}/clear/redis`, {

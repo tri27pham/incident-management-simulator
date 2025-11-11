@@ -48,6 +48,21 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* Fix drag-and-drop for Safari and Chrome consistency */
+[data-rbd-draggable-context-id] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+[data-rbd-drag-handle-draggable-id] {
+  -webkit-user-drag: element;
+  cursor: grab;
+}
+
+[data-rbd-drag-handle-draggable-id]:active {
+  cursor: grabbing;
+}
+
 /* Smooth transitions for theme switching - only for colors */
 body *:not(.no-theme-transition) {
   transition: background-color 0.3s ease, 

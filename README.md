@@ -2,6 +2,24 @@
 
 A full-stack application that simulates incident management with AI-powered diagnosis and suggested fixes.
 
+## ☁️ Quick Deploy to Google Cloud
+
+**Want to deploy this 24/7 for ~$16/month?**
+
+```bash
+# 1. Add API key to .env
+cp .env.example .env
+
+# 2. Deploy to GCP
+./scripts/deploy-vm-standalone.sh
+
+# Done! Access at http://YOUR_VM_IP:3000
+```
+
+📖 **[Full GCP Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md)** - Complete guide with backups, updates, monitoring
+
+---
+
 ## 🔐 Authentication
 
 **The application is password-protected.** 

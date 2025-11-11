@@ -2,10 +2,13 @@
 node_modules/
 __pycache__/
 *.pyc
+.DS_Store
 
 # Go build outputs
 /bin
 /vendor
+backend/server
+*.exe
 
 # Environment & build artifacts
 .env
@@ -13,9 +16,16 @@ __pycache__/
 !.env.example
 /dist
 /build
+frontend/dist/
 
 # Logs
 logs/
 *.log
 *.pid
 /tmp/incident-*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
