@@ -4,14 +4,30 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/tri27pham/incident-management-simulator/backend/internal/utils"
 )
+
+// User represents a connected user
+type User struct {
+	ID       string    `json:"id"`
+	Name     string    `json:"name"`
+	Color    string    `json:"color"`
+	Emoji    string    `json:"emoji"`
+	JoinedAt time.Time `json:"joined_at"`
+}
 
 // Hub maintains the set of active clients and broadcasts messages to the clients.
 type Hub struct {
 	// Registered clients.
 	clients map[*websocket.Conn]bool
+
+	// Users mapped to their connections
+	users      map[*websocket.Conn]*User
+	usersMutex sync.RWMutex
 
 	// Inbound messages from the clients.
 	Broadcast chan interface{}
@@ -30,7 +46,59 @@ func NewHub() *Hub {
 		Register:   make(chan *websocket.Conn),
 		Unregister: make(chan *websocket.Conn),
 		clients:    make(map[*websocket.Conn]bool),
+		users:      make(map[*websocket.Conn]*User),
 	}
+}
+
+// AddUser adds a user to the hub and broadcasts the updated user list
+func (h *Hub) AddUser(conn *websocket.Conn, userName string) {
+	h.usersMutex.Lock()
+	animal := utils.GenerateRandomAnimal()
+	user := &User{
+		ID:       utils.GenerateAnonymousName(), // Use animal name as ID for uniqueness
+		Name:     userName,
+		Color:    utils.GenerateRandomColor(),
+		Emoji:    animal.Emoji,
+		JoinedAt: time.Now(),
+	}
+	h.users[conn] = user
+	h.usersMutex.Unlock()
+
+	log.Printf("👤 User joined: %s (%s)", userName, animal.Emoji)
+	h.BroadcastUserList()
+}
+
+// RemoveUser removes a user from the hub and broadcasts the updated user list
+func (h *Hub) RemoveUser(conn *websocket.Conn) {
+	h.usersMutex.Lock()
+	user, exists := h.users[conn]
+	if exists {
+		log.Printf("👋 User left: %s", user.Name)
+		delete(h.users, conn)
+	}
+	h.usersMutex.Unlock()
+
+	if exists {
+		h.BroadcastUserList()
+	}
+}
+
+// BroadcastUserList sends the current user list to all connected clients
+func (h *Hub) BroadcastUserList() {
+	h.usersMutex.RLock()
+	users := make([]*User, 0, len(h.users))
+	for _, user := range h.users {
+		users = append(users, user)
+	}
+	h.usersMutex.RUnlock()
+
+	message := map[string]interface{}{
+		"type":  "user_list_update",
+		"users": users,
+		"count": len(users),
+	}
+
+	h.Broadcast <- message
 }
 
 // Run starts the hub's event loop.
@@ -43,6 +111,7 @@ func (h *Hub) Run() {
 		case client := <-h.Unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
+				h.RemoveUser(client) // Remove user and broadcast update
 				client.Close()
 				log.Printf("❌ WebSocket client disconnected (remaining clients: %d)", len(h.clients))
 			}

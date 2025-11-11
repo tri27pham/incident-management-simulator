@@ -4,27 +4,26 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rs/cors"
 	"github.com/tri27pham/incident-management-simulator/backend/internal/handlers"
 )
 
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
-	// Allow all origins for WebSocket and API requests.
-	// For production, you should restrict this to your frontend's domain.
-	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-		AllowedHeaders:   []string{"Origin", "Content-Type", "Accept"},
-		ExposedHeaders:   []string{"Content-Length"},
-		AllowCredentials: true,
-	})
+	// CORS middleware - must be before routes
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Max-Age", "86400")
 
-	// Adapt the cors middleware for Gin
-	r.Use(func(ctx *gin.Context) {
-		c.HandlerFunc(ctx.Writer, ctx.Request)
-		ctx.Next()
+		// Handle preflight OPTIONS request
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
 	})
 
 	// API v1 routes

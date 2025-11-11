@@ -7,9 +7,11 @@ import { FilterBar } from './components/FilterBar';
 import { ResolvedIncidentsPanel } from './components/ResolvedIncidentsPanel';
 import { LoginScreen } from './components/LoginScreen';
 import { CreateIncidentModal, NewIncidentData } from './components/CreateIncidentModal';
+import { ActiveUsers } from './components/ActiveUsers';
 import * as api from './services/api';
 import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
 import { useTheme } from './contexts/ThemeContext';
+import { getUserName } from './utils/nameGenerator';
 
 const emptyBoardState: IncidentBoardState = {
   Triage: {
@@ -193,6 +195,16 @@ function App() {
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const [isErrorToastFadingOut, setIsErrorToastFadingOut] = useState(false);
   const [redisMemoryPercent, setRedisMemoryPercent] = useState<number | null>(null);
+  
+  // Active users state
+  const [activeUsers, setActiveUsers] = useState<Array<{
+    id: string;
+    name: string;
+    color: string;
+    emoji: string;
+    joined_at: string;
+  }>>([]);
+  const [currentUserName] = useState(() => getUserName());
 
   // Helper function to show success toast with fade-out animation
   const showSuccessToast = (message: string) => {
@@ -1207,6 +1219,13 @@ function App() {
           // Reset reconnect attempts on successful message
           reconnectAttempts = 0;
           
+          // Handle user list updates
+          if ((data as any).type === 'user_list_update') {
+            console.log('👥 User list updated:', (data as any).users);
+            setActiveUsers((data as any).users || []);
+            return;
+          }
+          
           // Check if this is a reset message
           if ((data as any).type === 'reset') {
             console.log('🔄 Database reset detected - clearing all incidents from UI');
@@ -1357,7 +1376,18 @@ function App() {
           }
         });
         
-        console.log('✅ WebSocket instance created, setting onclose handler...');
+        console.log('✅ WebSocket instance created, setting handlers...');
+        
+        // Send user_join message when connection opens
+        ws.onopen = () => {
+          console.log('👤 Sending user join message:', currentUserName);
+          if (ws) {
+            ws.send(JSON.stringify({
+              type: 'user_join',
+              name: currentUserName
+            }));
+          }
+        };
         
         // Handle WebSocket close event for automatic reconnection
         ws.onclose = () => {
@@ -1578,6 +1608,9 @@ function App() {
             )}
           </div>
           <div className="flex items-center gap-3">
+            {/* Active Users - positioned to the left of Generate Incident button */}
+            <ActiveUsers users={activeUsers} currentUserName={currentUserName} />
+            
             <button 
               onClick={handleGenerateIncident}
               disabled={isGenerating || isFixingAll}

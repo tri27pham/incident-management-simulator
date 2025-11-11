@@ -48,19 +48,38 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Fix drag-and-drop for Safari and Chrome consistency */
+/* Fix drag-and-drop for all browsers */
 [data-rbd-draggable-context-id] {
   -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
   user-select: none;
 }
 
 [data-rbd-drag-handle-draggable-id] {
   -webkit-user-drag: element;
+  -khtml-user-drag: element;
+  -moz-user-drag: element;
+  -o-user-drag: element;
+  user-drag: element;
   cursor: grab;
+  cursor: -webkit-grab;
+  cursor: -moz-grab;
 }
 
 [data-rbd-drag-handle-draggable-id]:active {
   cursor: grabbing;
+  cursor: -webkit-grabbing;
+  cursor: -moz-grabbing;
+}
+
+/* Additional touch support */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-rbd-droppable-id] {
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Smooth transitions for theme switching - only for colors */

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -34,18 +35,27 @@ func WebSocketHandler(c *gin.Context) {
 	// Register the new client
 	wshub.WSHub.Register <- conn
 
-	// Keep the connection alive by reading messages (even if we don't process them)
-	// This blocks until the connection is closed
+	// Keep the connection alive by reading messages
 	defer func() {
 		wshub.WSHub.Unregister <- conn
 	}()
 
 	for {
-		// Read messages from the client (we don't process them, but we need to read to detect disconnection)
-		_, _, err := conn.ReadMessage()
+		// Read messages from the client
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			// Connection closed or error occurred
 			break
+		}
+
+		// Parse the message to check for user_join events
+		var msg map[string]interface{}
+		if err := json.Unmarshal(message, &msg); err == nil {
+			if msgType, ok := msg["type"].(string); ok && msgType == "user_join" {
+				if userName, ok := msg["name"].(string); ok {
+					wshub.WSHub.AddUser(conn, userName)
+				}
+			}
 		}
 	}
 }
