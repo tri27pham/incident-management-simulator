@@ -258,10 +258,15 @@ export async function getGeneratorStatus(): Promise<{ is_running: boolean }> {
 }
 
 // Health Monitor API - Trigger failures
-// Derive health monitor URL from API URL (same host, different port)
+// For production (with Nginx), health monitor is proxied at root
+// For local dev (without Nginx), use port 8002
 const getHealthMonitorUrl = () => {
-  // Extract host and protocol from API URL and use port 8002
   const apiUrl = new URL(API_BASE_URL);
+  // If using HTTPS or production domain, use root path (Nginx proxies it)
+  if (apiUrl.protocol === 'https:' || apiUrl.hostname !== 'localhost') {
+    return `${apiUrl.protocol}//${apiUrl.hostname}`;
+  }
+  // Local development: use port 8002 directly
   return `${apiUrl.protocol}//${apiUrl.hostname}:8002`;
 };
 const HEALTH_MONITOR_URL = getHealthMonitorUrl();
