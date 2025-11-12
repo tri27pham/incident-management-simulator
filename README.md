@@ -6,7 +6,7 @@ A full-stack incident management simulation. Features include AI-powered diagnos
 
 Like most good projects, this one also started off with a big whiteboard and way too many arrows. Version 1 was a basic simulator with just AI-generated incidents and solutions. Version 2 took it further with mock systems running in containers, real failure injection, and an SRE Agent that actually attempts to fix things.
 
-The final result turned out a bit from the initial sketches - but who doesn't love a nice whiteboard diagram :)
+The final result turned out a bit different from the initial sketches - but who doesn't love a nice whiteboard diagram :)
 
 
 <div align="center">
