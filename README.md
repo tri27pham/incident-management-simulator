@@ -11,11 +11,11 @@ The final result turned out a bit from the initial sketches - but who doesn't lo
 
 <div align="center">
   <div style="display: inline-block; margin: 10px;">
-    <img src="docs/images/v1.jpg" alt="Version 1 brainstorming" width="300"/>
+    <img src="docs/images/v1.jpg" alt="Version 1 brainstorming" width="450"/>
     <p><strong>Version 1</strong></p>
   </div>
   <div style="display: inline-block; margin: 10px;">
-    <img src="docs/images/v2.jpg" alt="Version 2 planning" width="300"/>
+    <img src="docs/images/v2.jpg" alt="Version 2 planning" width="450"/>
     <p><strong>Version 2</strong></p>
   </div>
   <p><em>Early brainstorming & plans</em></p>
