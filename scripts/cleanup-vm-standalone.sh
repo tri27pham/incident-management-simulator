@@ -135,6 +135,37 @@ else
 fi
 
 #############################################################################
+# Delete Secrets (optional)
+#############################################################################
+
+echo ""
+echo -e "${YELLOW}Checking for secrets in Secret Manager...${NC}"
+
+# Check if secrets exist
+GROQ_SECRET_EXISTS=$(gcloud secrets list --filter="name:groq-api-key" --format="value(name)" 2>/dev/null)
+GEMINI_SECRET_EXISTS=$(gcloud secrets list --filter="name:gemini-api-key" --format="value(name)" 2>/dev/null)
+APP_PASSWORD_SECRET_EXISTS=$(gcloud secrets list --filter="name:app-password" --format="value(name)" 2>/dev/null)
+
+if [ ! -z "$GROQ_SECRET_EXISTS" ] || [ ! -z "$GEMINI_SECRET_EXISTS" ] || [ ! -z "$APP_PASSWORD_SECRET_EXISTS" ]; then
+    echo "Found secrets:"
+    [ ! -z "$GROQ_SECRET_EXISTS" ] && echo "  - groq-api-key"
+    [ ! -z "$GEMINI_SECRET_EXISTS" ] && echo "  - gemini-api-key"
+    [ ! -z "$APP_PASSWORD_SECRET_EXISTS" ] && echo "  - app-password"
+    echo ""
+    read -p "Do you want to delete these secrets? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        [ ! -z "$GROQ_SECRET_EXISTS" ] && gcloud secrets delete groq-api-key --quiet && print_success "  groq-api-key deleted"
+        [ ! -z "$GEMINI_SECRET_EXISTS" ] && gcloud secrets delete gemini-api-key --quiet && print_success "  gemini-api-key deleted"
+        [ ! -z "$APP_PASSWORD_SECRET_EXISTS" ] && gcloud secrets delete app-password --quiet && print_success "  app-password deleted"
+    else
+        print_warning "Secrets kept (you can delete them later from GCP Console)"
+    fi
+else
+    print_warning "No secrets found"
+fi
+
+#############################################################################
 # Delete Backup Bucket (optional)
 #############################################################################
 

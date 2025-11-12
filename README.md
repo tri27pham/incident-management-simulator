@@ -1,362 +1,238 @@
 # Incident Management Simulator
 
-A full-stack application that simulates incident management with AI-powered diagnosis and suggested fixes.
+A full-stack incident management simulation. Features include AI-powered diagnosis and remediation, failure injection into mock systems, and an autonomous AI SRE Agent that resolves issues.
 
-## ☁️ Quick Deploy to Google Cloud
-
-**Want to deploy this 24/7 for ~$16/month?**
-
-```bash
-# 1. Add API key to .env
-cp .env.example .env
-
-# 2. Deploy to GCP
-./scripts/deploy-vm-standalone.sh
-
-# Done! Access at http://YOUR_VM_IP:3000
-```
-
-📖 **[Full GCP Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md)** - Complete guide with backups, updates, monitoring
-
----
-
-## 🔐 Authentication
-
-**The application is password-protected.** 
-
-Default password: `changeme`  
-Username is always: `user` (you only need to remember the password)
-
-⚠️ **IMPORTANT:** Change the password before deploying! See [AUTH_CONFIG.md](./AUTH_CONFIG.md) for details.
-
-To set a custom password:
-```bash
-export AUTH_PASSWORD=your_secure_password
-docker-compose up -d --build frontend
-```
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
-- Docker Desktop (running)
-- Go 1.21+
-- Node.js 18+
-- Python 3.9+
 
-### Start Everything
+**Required:**
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (must be running)
+
+**Optional (for development):**
+- [Node.js 18+](https://nodejs.org/) (for frontend development)
+- [Go 1.21+](https://golang.org/dl/) (for backend development)
+- [Python 3.9+](https://www.python.org/downloads/) (for AI services development)
+
+### Local Development
 ```bash
-./scripts/start.sh
-```
+# 1. Navigate to the project directory
+cd incident-management-simulator
 
-This will:
-1. Check if Docker is running
-2. **Kill any conflicting services on ports 8080, 5173, 8000, 9000**
-3. Start PostgreSQL in Docker
-4. Clean up stale database connections
-5. Run database migrations automatically
-6. Start the backend (Go)
-7. Start AI diagnosis service (FastAPI)
-8. Start the frontend (React/Vite)
-9. Start the incident generator (FastAPI)
-10. Verify all services are healthy
-
-**Note:** The script automatically handles port conflicts by killing old processes before starting new ones.
-
-### Stop Everything
-```bash
-./scripts/stop.sh
-```
-
-This will:
-1. Kill processes by PID files
-2. **Kill any remaining processes on ports 8080, 5173, 8000, 9000** (catches orphaned processes)
-3. Kill processes by name pattern (final fallback)
-4. Stop PostgreSQL container
-5. Clean up stale log files
-
-**Note:** Uses a three-layer approach (PID → Port → Name) to ensure all services are stopped completely.
-
-### Check Status
-```bash
-./scripts/status.sh
-```
-
-### View Logs
-```bash
-./scripts/logs.sh              # All logs
-./scripts/logs.sh backend      # Backend only
-./scripts/logs.sh frontend     # Frontend only
-./scripts/logs.sh ai           # AI diagnosis only
-./scripts/logs.sh generator    # Incident generator only
-```
-
----
-
-## 📊 Services
-
-| Service | URL | Purpose |
-|---------|-----|---------|
-| Frontend | http://localhost:5173 | React UI for incident board |
-| Backend API | http://localhost:8080 | Go API server |
-| AI Diagnosis | http://localhost:8000 | FastAPI AI service (Groq/Gemini) |
-| Incident Generator | http://localhost:9000 | Automated incident generation |
-| PostgreSQL | localhost:5432 | Database |
-
----
-
-## 🗄️ Database Management
-
-### Clear All Incidents
-```bash
-./scripts/clear-db.sh
-```
-Deletes all incidents but keeps schema intact.
-
-### Reset Database (Nuclear)
-```bash
-./scripts/reset-db.sh
-```
-Completely destroys and recreates the database.
-
----
-
-## 🔍 Troubleshooting
-
-### Services Won't Start
-
-The start script automatically handles most issues, but if you still have problems:
-
-1. **Run stop.sh first:**
-   ```bash
-   ./scripts/stop.sh
-   ```
-   This uses a three-layer cleanup to ensure all old processes are killed.
-
-2. **Check if Docker is running:**
-   ```bash
-   docker info
-   ```
-   If not, start Docker Desktop.
-
-3. **Manually check for port conflicts:**
-   ```bash
-   lsof -ti:8080,5173,8000,9000,5432
-   ```
-   The start script should handle this automatically, but you can verify.
-
-4. **Check logs:**
-   ```bash
-   ./scripts/logs.sh
-   ```
-
-**Note:** The start script now includes pre-flight checks that automatically kill conflicting processes.
-
-### AI Diagnosis Not Working
-
-1. **Check environment variables:**
-   ```bash
-   cat .env | grep -E "GROQ_API_KEY|GEMINI_API_KEY|AI_DIAGNOSIS_URL"
-   ```
-   At least one API key (Groq or Gemini) must be set.
-
-2. **Verify AI service is responding:**
-   ```bash
-   curl http://localhost:8000/api/v1/health
-   ```
-
-3. **Check backend has AI URL:**
-   ```bash
-   ./scripts/status.sh
-   ```
-
-4. **Test AI providers:**
-   - Groq: Check API key at https://console.groq.com/keys
-   - Gemini: Check API key at https://ai.google.dev/
-   - See [docs/GROQ_SETUP.md](docs/GROQ_SETUP.md) for detailed setup
-
-### Database Connection Issues
-
-1. **Check if PostgreSQL is running:**
-   ```bash
-   docker ps | grep postgres
-   ```
-
-2. **Start PostgreSQL:**
-   ```bash
-   docker start postgres-dev
-   ```
-
-3. **Test connection:**
-   ```bash
-   PGPASSWORD=incident_pass psql -h localhost -U incident_user -d incident_db -c "\dt"
-   ```
-
-### "Datasource was invalidated" Error
-
-This happens when your database client (like DBeaver) has stale connections.
-
-**Fix:**
-1. In DBeaver: Right-click connection → "Invalidate/Reconnect"
-2. Or kill idle connections:
-   ```bash
-   PGPASSWORD=incident_pass psql -h localhost -U incident_user -d incident_db -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'incident_db' AND pid <> pg_backend_pid() AND state = 'idle';"
-   ```
-
----
-
-## 🛠️ Manual Setup (Without Scripts)
-
-If you prefer to run services manually:
-
-### 1. Start PostgreSQL
-```bash
-docker run -d --name postgres-dev \
-  -e POSTGRES_USER=incident_user \
-  -e POSTGRES_PASSWORD=incident_pass \
-  -e POSTGRES_DB=incident_db \
-  -p 5432:5432 \
-  postgres:16-alpine
-```
-
-### 2. Start Backend
-```bash
-cd backend
-AI_DIAGNOSIS_URL=http://localhost:8000 go run main.go
-```
-
-### 3. Start AI Diagnosis
-```bash
-cd ai-diagnosis
-python3 -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### 4. Start Frontend
-```bash
-cd frontend
-npm run dev
-```
-
-### 5. Start Incident Generator (Optional)
-```bash
-cd incident-generator
-BACKEND_URL=http://localhost:8080 python3 app.py
-```
-
----
-
-## 📝 Environment Variables
-
-Copy `.env.example` to `.env` and fill in your API keys:
-
-```bash
+# 2. Copy environment file
 cp .env.example .env
-# Edit .env with your API keys
+
+# 3. Add your API keys (at least one required)
+# Edit .env and add: GROQ_API_KEY or GEMINI_API_KEY
+
+# 4. Start everything (Docker will install all dependencies automatically)
+./scripts/local-start.sh
+
+# 5. Open http://localhost:3000
+# Login with password: changeme
 ```
 
-Or create a `.env` file in the project root:
+**Note:** Docker Compose will automatically:
+- Pull all required images
+- Install all dependencies (Node, Go, Python packages)
+- Set up the database
+- Start all services
 
+No manual dependency installation needed!
+
+### Getting API Keys
+
+You need at least **one** AI provider API key:
+
+**Option 1: Groq (Recommended - Free & Fast)**
+1. Go to https://console.groq.com/keys
+2. Sign up and create an API key
+3. Add to `.env`: `GROQ_API_KEY=gsk_your_key_here`
+
+**Option 2: Google Gemini (Free Alternative)**
+1. Go to https://ai.google.dev/
+2. Get an API key
+3. Add to `.env`: `GEMINI_API_KEY=your_key_here`
+
+### Deploy to Google Cloud (24/7 for ~$35-40/month)
+```bash
+# 1. Configure .env with API keys
+cp .env.example .env
+# Add: GROQ_API_KEY, GEMINI_API_KEY, VITE_APP_PASSWORD
+
+# 2. Deploy (automatically configures for remote access)
+./scripts/deploy-vm-standalone.sh
+
+# 3. Access at http://YOUR_VM_IP:3000
+# Works from any device - frontend auto-configured with VM's public IP
+```
+
+**Note:** 
+- Uses e2-medium VM (~$35-40/month) for reliable performance
+- API keys stored in GCP Secret Manager (encrypted, audited)
+- Frontend automatically configured to use VM's public IP
+- Firewall automatically configured for ports 3000, 8080, 8002
+- No manual configuration needed for remote access
+
+**[Full Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md)**
+
+---
+
+## Features
+
+- **Drag-and-drop incident board** (Triage → Investigating → Fixing → Resolved)
+- **AI-powered diagnosis & solutions** (Groq/Gemini)
+- **Failure injection** into mock systems (Redis, PostgreSQL, Disk)
+- **System health monitoring** with real-time metrics
+- **Live collaboration** with anonymous animal names
+- **Light/Dark themes**
+- **WebSocket real-time updates**
+- **Full incident history & timeline**
+
+---
+
+## Commands
+
+**Local Development:**
+```bash
+./scripts/local-start.sh      # Start all services
+./scripts/local-stop.sh       # Stop all services
+./scripts/local-logs.sh       # View logs
+./scripts/local-restart.sh    # Restart services
+```
+
+**VM Deployment:**
+```bash
+./scripts/deploy-vm-standalone.sh   # Deploy to GCP VM
+./scripts/update-vm-standalone.sh   # Update deployed app
+./scripts/check-vm-status.sh        # Check VM & container status
+./scripts/cleanup-vm-standalone.sh  # Delete all GCP resources
+```
+
+---
+
+## Architecture
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| Frontend | 3000 | React UI |
+| Backend | 8080 | Go API |
+| AI Diagnosis | 8000 | AI analysis |
+| Incident Generator | 8001 | Auto-generate incidents |
+| Health Monitor | 8002 | System health checks |
+| PostgreSQL | 5432 | Database |
+| Redis (Mock) | 6379 | Test failure injection |
+| PostgreSQL (Mock) | 5433 | Test failure injection |
+
+---
+
+## Authentication
+
+**Default password:** `changeme`
+
+**To change it**, add to your `.env` file:
+```bash
+VITE_APP_PASSWORD=your_secure_password
+```
+
+Then rebuild the frontend:
+```bash
+docker compose up --build -d frontend
+```
+
+---
+
+## How to Use
+
+1. **Generate Incidents** - Click "Generate Incident" for AI-created scenarios
+2. **Inject Failures** - Click "Trigger Failure" → Select system to break
+3. **Manage Incidents** - Drag cards between columns to update status
+4. **View Details** - Click cards to see AI diagnosis, suggested fixes, and timeline
+5. **Collaborate** - Open in multiple browsers to see live user tracking
+
+---
+
+## Tech Stack
+
+**Frontend:** React, TypeScript, Tailwind CSS, Vite  
+**Backend:** Go, Gin, GORM, WebSockets  
+**AI:** Python, FastAPI, Groq/Gemini  
+**Database:** PostgreSQL  
+**Infrastructure:** Docker, Docker Compose, GCP
+
+---
+
+## Environment Variables
+
+Required in `.env`:
 ```env
-# Database
-POSTGRES_HOST=localhost
+# At least one AI provider (Groq recommended)
+GROQ_API_KEY=gsk_your_key_here
+GEMINI_API_KEY=your_key_here  # Optional fallback
+
+# Frontend password (optional, defaults to "changeme")
+VITE_APP_PASSWORD=your_secure_password
+
+# Database (auto-configured in Docker)
+POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
-POSTGRES_USER=incident_user
-POSTGRES_PASSWORD=incident_pass
-POSTGRES_DB=incident_db
-
-# AI Services (at least one required)
-GROQ_API_KEY=gsk_your_groq_api_key_here
-GEMINI_API_KEY=your_gemini_api_key_here
-AI_DIAGNOSIS_URL=http://localhost:8000
-
-# Backend URL (for incident generator)
-BACKEND_URL=http://localhost:8080
-
-# Frontend URLs (optional)
-VITE_API_URL=http://localhost:8080/api/v1
-VITE_GENERATOR_URL=http://localhost:9000
+POSTGRES_USER=incidentuser
+POSTGRES_PASSWORD=incidentpass
+POSTGRES_DB=incidentdb
 ```
 
-**Note:** The system uses Groq as the primary AI provider with Gemini as fallback. At least one API key is required. See [docs/GROQ_SETUP.md](docs/GROQ_SETUP.md) for setup instructions.
-
 ---
 
-## 🎯 Features
+## Troubleshooting
 
-- ✅ **Real-time incident board** with drag-and-drop workflow (Triage → Investigating → Fixing → Resolved)
-- ✅ **AI-powered diagnosis** using Groq/Gemini with automatic fallback
-- ✅ **AI-suggested solutions** with confidence scoring
-- ✅ **Automated incident generation** via AI
-- ✅ **WebSocket live updates** across all clients
-- ✅ **Light/Dark theme** with smooth transitions
-- ✅ **Status history tracking** with timeline visualization
-- ✅ **Resolved incidents panel** with full incident history
-- ✅ **Persistent notes** with manual save
-- ✅ **Severity-based filtering** (Critical, High, Medium, Low, Minor)
-- ✅ **Team-based filtering** (Backend, Frontend, Infrastructure, Database, Security)
-- ✅ **Two-stage card expansion** with smooth auto-scroll
-- ✅ **Full incident details modal** with diagnosis, solution, and timeline
-
----
-
-## 📦 Tech Stack
-
-- **Frontend:** React, TypeScript, Tailwind CSS, Vite, React Beautiful DnD
-- **Backend:** Go, Gin, GORM, WebSockets
-- **AI Service:** Python, FastAPI, Groq API, Google Gemini API
-- **Database:** PostgreSQL 16 (with TimescaleDB-ready schema)
-- **Containerization:** Docker, Docker Compose
-- **Incident Generator:** Python, FastAPI, AI-powered
-
----
-
-## 🔧 Development
-
-### Install Dependencies
-
+**Docker not running:**
 ```bash
-# Frontend
-cd frontend && npm install
+# Make sure Docker Desktop is running
+docker info
 
-# Backend
-cd backend && go mod download
-
-# AI Diagnosis
-cd ai-diagnosis && pip install -r requirements.txt
-
-# Incident Generator
-cd incident-generator && pip install -r requirements.txt
+# If you see an error, start Docker Desktop
 ```
 
-### Run Tests
-
+**Services won't start:**
 ```bash
-# Backend
-cd backend && go test ./...
-
-# Frontend
-cd frontend && npm test
+./scripts/local-stop.sh && ./scripts/local-start.sh
 ```
+
+**Check service status:**
+```bash
+docker compose ps
+docker compose logs -f
+```
+
+**Reset everything:**
+```bash
+docker compose down -v
+./scripts/local-start.sh
+```
+
+**Missing API keys:**
+- Make sure you have at least one API key (Groq or Gemini) in your `.env` file
+- Check the "Getting API Keys" section above
+
+**Drag-and-drop not working:**
+- Try hard refresh: `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac)
+- Or test in incognito/private browsing window
+- Browser may be caching old CORS settings
+
+**Remote access not working:**
+- Check firewall rules: `gcloud compute firewall-rules list`
+- Verify containers are running: `./scripts/check-vm-status.sh`
+- Test backend API: `curl http://YOUR_VM_IP:8080/api/v1/health`
 
 ---
 
-## 📄 License
+## Documentation
+
+- [GCP Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md) - Deploy to Google Cloud
+- [Groq Setup Guide](./docs/GROQ_SETUP.md) - Get free AI API key
+
+---
+
+## License
 
 MIT
-
----
-
-## 🆘 Need Help?
-
-1. Check `./scripts/status.sh` to see which services are running
-2. Check logs with `./scripts/logs.sh`
-3. Try stopping and restarting: `./scripts/stop.sh && ./scripts/start.sh`
-4. For database issues: `./scripts/reset-db.sh` (⚠️ destroys all data)
-
----
-
-## 📚 Documentation
-
-- [Quick Reference](docs/QUICK_REFERENCE.md) - Command cheatsheet
-- [Groq Setup](docs/GROQ_SETUP.md) - Configure Groq AI
-- [Migrations](docs/MIGRATIONS.md) - Database migration guide
-- [AI Fallback Changes](docs/AI_FALLBACK_CHANGES.md) - AI provider fallback system

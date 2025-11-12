@@ -94,6 +94,62 @@ if ! grep -q "GROQ_API_KEY=.\+" .env && ! grep -q "GEMINI_API_KEY=.\+" .env; the
 fi
 print_success ".env file configured"
 
+# Enable Secret Manager API
+echo ""
+echo "Enabling Secret Manager API..."
+gcloud services enable secretmanager.googleapis.com --project=$PROJECT_ID 2>/dev/null || true
+print_success "Secret Manager API enabled"
+
+# Store API keys in Secret Manager
+echo ""
+echo "Storing API keys in Secret Manager..."
+
+# Extract keys from .env
+GROQ_KEY=$(grep "^GROQ_API_KEY=" .env | cut -d'=' -f2- | tr -d '\n\r' | xargs)
+GEMINI_KEY=$(grep "^GEMINI_API_KEY=" .env | cut -d'=' -f2- | tr -d '\n\r' | xargs)
+APP_PASSWORD=$(grep "^VITE_APP_PASSWORD=" .env | cut -d'=' -f2- | tr -d '\n\r' | xargs)
+
+# Store GROQ_API_KEY if present
+if [ ! -z "$GROQ_KEY" ]; then
+    echo "  Storing GROQ_API_KEY..."
+    echo -n "$GROQ_KEY" | gcloud secrets create groq-api-key \
+        --data-file=- \
+        --replication-policy="automatic" \
+        --project=$PROJECT_ID 2>/dev/null || \
+    echo -n "$GROQ_KEY" | gcloud secrets versions add groq-api-key \
+        --data-file=- \
+        --project=$PROJECT_ID
+    print_success "  GROQ_API_KEY stored"
+fi
+
+# Store GEMINI_API_KEY if present
+if [ ! -z "$GEMINI_KEY" ]; then
+    echo "  Storing GEMINI_API_KEY..."
+    echo -n "$GEMINI_KEY" | gcloud secrets create gemini-api-key \
+        --data-file=- \
+        --replication-policy="automatic" \
+        --project=$PROJECT_ID 2>/dev/null || \
+    echo -n "$GEMINI_KEY" | gcloud secrets versions add gemini-api-key \
+        --data-file=- \
+        --project=$PROJECT_ID
+    print_success "  GEMINI_API_KEY stored"
+fi
+
+# Store VITE_APP_PASSWORD if present
+if [ ! -z "$APP_PASSWORD" ]; then
+    echo "  Storing VITE_APP_PASSWORD..."
+    echo -n "$APP_PASSWORD" | gcloud secrets create app-password \
+        --data-file=- \
+        --replication-policy="automatic" \
+        --project=$PROJECT_ID 2>/dev/null || \
+    echo -n "$APP_PASSWORD" | gcloud secrets versions add app-password \
+        --data-file=- \
+        --project=$PROJECT_ID
+    print_success "  VITE_APP_PASSWORD stored"
+fi
+
+print_success "API keys securely stored in Secret Manager"
+
 echo ""
 echo -e "${YELLOW}Deployment Configuration:${NC}"
 echo "  Project:      $PROJECT_ID"
@@ -142,6 +198,7 @@ gcloud compute instances create $VM_NAME \
     --provisioning-model=STANDARD \
     --tags=incident-simulator,http-server \
     --create-disk=auto-delete=yes,boot=yes,device-name=$VM_NAME,image=projects/$IMAGE_PROJECT/global/images/family/$IMAGE_FAMILY,mode=rw,size=$DISK_SIZE,type=projects/$PROJECT_ID/zones/$ZONE/diskTypes/pd-balanced \
+    --scopes=https://www.googleapis.com/auth/cloud-platform \
     --metadata=startup-script='#!/bin/bash
 # Install Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
@@ -284,10 +341,7 @@ rsync -a \
     --exclude '.env.*' \
     ./ $TEMP_DIR/ 2>/dev/null | tail -20
 
-# Copy .env file explicitly
-echo "Copying .env file..."
-cp .env $TEMP_DIR/.env
-chmod 644 $TEMP_DIR/.env
+echo "Note: API keys will be fetched from Secret Manager on VM"
 
 # Create tar archive (faster transfer)
 echo "Creating archive..."
@@ -330,7 +384,6 @@ gcloud compute ssh $VM_NAME --zone=$ZONE --quiet --command="
     # Move to permanent location
     sudo mkdir -p /opt/incident-simulator
     sudo cp -r /tmp/app/* /opt/incident-simulator/
-    sudo cp -r /tmp/app/.env /opt/incident-simulator/.env 2>/dev/null || true
     sudo rm -rf /tmp/app
     
     # Set permissions
@@ -339,15 +392,53 @@ gcloud compute ssh $VM_NAME --zone=$ZONE --quiet --command="
     # Navigate to app directory
     cd /opt/incident-simulator
     
-    # Verify .env exists
-    if [ ! -f .env ]; then
-        echo '✗ ERROR: .env file not found after copy!'
-        ls -la | head -20
-        exit 1
+    # Create .env file from Secret Manager
+    echo 'Fetching secrets from Secret Manager...'
+    
+    # Fetch secrets and create .env
+    cat > .env << 'ENVFILE'
+# Database (auto-configured in Docker)
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_USER=incidentuser
+POSTGRES_PASSWORD=incidentpass
+POSTGRES_DB=incidentdb
+
+# Backend
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=incidentuser
+DB_PASSWORD=incidentpass
+DB_NAME=incidentdb
+
+# Health Monitor
+HEALTH_MONITOR_PORT=8002
+ENVFILE
+
+    # Add API keys from Secret Manager
+    GROQ_KEY=\$(gcloud secrets versions access latest --secret=groq-api-key --project=$PROJECT_ID 2>/dev/null || echo '')
+    if [ ! -z \"\$GROQ_KEY\" ]; then
+        echo \"GROQ_API_KEY=\$GROQ_KEY\" >> .env
+        echo '✓ GROQ_API_KEY retrieved'
     fi
     
-    echo '✓ Files in place'
-    echo '✓ .env file verified'
+    GEMINI_KEY=\$(gcloud secrets versions access latest --secret=gemini-api-key --project=$PROJECT_ID 2>/dev/null || echo '')
+    if [ ! -z \"\$GEMINI_KEY\" ]; then
+        echo \"GEMINI_API_KEY=\$GEMINI_KEY\" >> .env
+        echo '✓ GEMINI_API_KEY retrieved'
+    fi
+    
+    APP_PASS=\$(gcloud secrets versions access latest --secret=app-password --project=$PROJECT_ID 2>/dev/null || echo 'changeme')
+    echo \"VITE_APP_PASSWORD=\$APP_PASS\" >> .env
+    echo '✓ VITE_APP_PASSWORD retrieved'
+    
+    # Add frontend API URL pointing to VM's public IP
+    EXTERNAL_IP=\$(curl -s http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip -H \"Metadata-Flavor: Google\")
+    echo \"VITE_API_URL=http://\$EXTERNAL_IP:8080/api/v1\" >> .env
+    echo \"✓ VITE_API_URL configured for external access: http://\$EXTERNAL_IP:8080/api/v1\"
+    
+    chmod 600 .env
+    echo '✓ .env file created from Secret Manager'
     
     # Start Docker Compose services
     echo 'Starting Docker Compose services...'
@@ -357,16 +448,22 @@ gcloud compute ssh $VM_NAME --zone=$ZONE --quiet --command="
     
     # Set up auto-restart on boot
     echo 'Setting up auto-restart on boot...'
-    sudo tee /etc/systemd/system/incident-simulator.service > /dev/null <<'EOF'
+    sudo tee /etc/systemd/system/incident-simulator.service > /dev/null <<EOF
 [Unit]
 Description=Incident Management Simulator
-After=docker.service
+After=docker.service network-online.target
 Requires=docker.service
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/incident-simulator
+ExecStartPre=/bin/bash -c 'cd /opt/incident-simulator && gcloud secrets versions access latest --secret=groq-api-key --project=$PROJECT_ID 2>/dev/null | sed \"s/^/GROQ_API_KEY=/\" > .env.tmp || true'
+ExecStartPre=/bin/bash -c 'cd /opt/incident-simulator && gcloud secrets versions access latest --secret=gemini-api-key --project=$PROJECT_ID 2>/dev/null | sed \"s/^/GEMINI_API_KEY=/\" >> .env.tmp || true'
+ExecStartPre=/bin/bash -c 'cd /opt/incident-simulator && gcloud secrets versions access latest --secret=app-password --project=$PROJECT_ID 2>/dev/null | sed \"s/^/VITE_APP_PASSWORD=/\" >> .env.tmp || true'
+ExecStartPre=/bin/bash -c 'cd /opt/incident-simulator && EXTERNAL_IP=\\$(curl -s http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip -H \"Metadata-Flavor: Google\") && echo \"VITE_API_URL=http://\\$EXTERNAL_IP:8080/api/v1\" >> .env.tmp'
+ExecStartPre=/bin/bash -c 'cd /opt/incident-simulator && cat .env.static .env.tmp > .env 2>/dev/null && rm -f .env.tmp'
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
 TimeoutStartSec=0
@@ -374,6 +471,28 @@ TimeoutStartSec=0
 [Install]
 WantedBy=multi-user.target
 EOF
+
+    # Create static env file
+    cat > /opt/incident-simulator/.env.static << 'STATICENV'
+# Database (auto-configured in Docker)
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_USER=incidentuser
+POSTGRES_PASSWORD=incidentpass
+POSTGRES_DB=incidentdb
+
+# Backend
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=incidentuser
+DB_PASSWORD=incidentpass
+DB_NAME=incidentdb
+
+# Health Monitor
+HEALTH_MONITOR_PORT=8002
+
+# Frontend API URL (will be appended from metadata)
+STATICENV
 
     sudo systemctl daemon-reload
     sudo systemctl enable incident-simulator.service

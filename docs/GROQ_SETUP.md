@@ -1,29 +1,24 @@
-# 🚀 Groq API Fallback Setup Guide
+# Groq API Setup Guide
 
-Your AI Diagnosis service now uses **Groq as a fallback** when Gemini fails!
+Get free AI-powered incident diagnosis with Groq.
 
-## 🔄 How It Works:
+## Why Groq?
 
-```
-1. Try Gemini first (15 RPM free)
-   ↓ (if fails)
-2. Try Groq fallback (30 RPM free, 10x faster!)
-   ↓ (if fails)
-3. Return error message
-```
+- **Free tier:** 30 requests/minute
+- **Fast:** 10x faster than alternatives
+- **No credit card required**
+- **Fallback:** Works alongside Gemini for reliability
 
-## ✅ Setup Instructions:
+## Setup Instructions
 
-### Step 1: Get Your Free Groq API Key
+### Step 1: Get Your API Key
 
-1. **Go to:** https://console.groq.com
-2. **Sign up** (free - no credit card required)
-3. **Create an API key:**
-   - Click "API Keys" in sidebar
-   - Click "Create API Key"
-   - Copy your key (starts with `gsk_...`)
+1. Go to https://console.groq.com/keys
+2. Sign up (free)
+3. Click "Create API Key"
+4. Copy your key (starts with `gsk_...`)
 
-### Step 2: Add to Your Environment
+### Step 2: Add to .env
 
 Add this to your `.env` file:
 
@@ -31,126 +26,99 @@ Add this to your `.env` file:
 GROQ_API_KEY=gsk_your_actual_groq_api_key_here
 ```
 
-**If you don't have a `.env` file yet, create one** at the project root with:
-
+**Optional:** Add Gemini as fallback:
 ```bash
-# AI Services
-GEMINI_API_KEY=your_gemini_key
-GROQ_API_KEY=your_groq_key
+GEMINI_API_KEY=your_gemini_key_here
 ```
 
-### Step 3: Restart the AI Diagnosis Service
+### Step 3: Restart Services
 
+**With Docker Compose:**
 ```bash
-./scripts/stop.sh     # Stop all services
-./scripts/start.sh    # Start with new config
+./scripts/local-stop.sh
+./scripts/local-start.sh
 ```
 
-Or manually restart just the AI service:
+**Or restart directly:**
 ```bash
-pkill -f "ai-diagnosis/app.py"
-cd ai-diagnosis && python3 -u app.py > ../logs/ai-diagnosis.log 2>&1 &
+docker compose restart ai-diagnosis
 ```
 
-## 📊 What You Get:
+## How It Works
 
-| Feature | Gemini (Free) | + Groq Fallback |
-|---------|---------------|-----------------|
-| **Rate Limit** | 15 RPM | 45 RPM combined! |
-| **Speed** | Normal | 10x faster with Groq |
-| **Uptime** | ~95% | ~99.9% |
-| **Cost** | FREE | FREE |
+The system tries providers in this order:
+1. **Groq** (primary - fast & reliable)
+2. **Gemini** (fallback if Groq fails)
 
-## 🔍 How to Test:
+You only need one API key, but having both provides redundancy.
 
-1. **Check logs** to see which API is being used:
-   ```bash
-   tail -f logs/ai-diagnosis.log
-   ```
+## Available Models
 
-   You'll see:
-   - `✅ Used Gemini API` (when Gemini works)
-   - `⚠️  Gemini failed: ...` + `✅ Used Groq API (fallback)` (when Groq saves the day)
-   - `❌ Groq also failed: ...` (when both fail)
+| Model | Speed | Best For |
+|-------|-------|----------|
+| `llama-3.3-70b-versatile` | Fast | General use (default) |
+| `llama-3.1-8b-instant` | Ultra-fast | Simple tasks |
+| `mixtral-8x7b-32768` | Fast | Long context |
 
-2. **Test without Gemini** to verify Groq works:
-   - Temporarily remove `GEMINI_API_KEY` from `.env`
-   - Restart AI service
-   - Generate an incident
-   - Should use Groq automatically!
-
-## ⚙️ Configuration Options:
-
-### Use Groq as Primary (Recommended for Speed):
-
-Edit `ai-diagnosis/app.py` and swap the order in `call_ai_with_fallback()`:
-
-```python
-def call_ai_with_fallback(prompt: str) -> str:
-    # Try Groq first (faster!)
-    try:
-        result = call_groq(prompt)
-        print("✅ Used Groq API")
-        return result
-    except Exception:
-        # Fall back to Gemini
-        result = call_gemini(prompt)
-        print("✅ Used Gemini API (fallback)")
-        return result
-```
-
-### Available Groq Models:
-
-| Model | Speed | Quality | Best For |
-|-------|-------|---------|----------|
-| `llama-3.3-70b-versatile` | ⚡⚡⚡ | 🌟🌟🌟🌟 | General (default) |
-| `llama-3.1-8b-instant` | ⚡⚡⚡⚡⚡ | 🌟🌟🌟 | Ultra-fast simple tasks |
-| `mixtral-8x7b-32768` | ⚡⚡⚡ | 🌟🌟🌟🌟 | Long context |
-
-Change in `ai-diagnosis/app.py` line 69:
+To change models, edit `ai-diagnosis/app.py`:
 ```python
 model="llama-3.1-8b-instant",  # For maximum speed
 ```
 
-## 🐛 Troubleshooting:
+## Testing
 
-### "Groq API key not configured"
-- Check your `.env` file has `GROQ_API_KEY=gsk_...`
-- Restart the AI service
+**Check which API is being used:**
+```bash
+docker compose logs -f ai-diagnosis
+```
 
-### "Groq API error: authentication"
+Look for:
+- `✅ Used Groq API` (success)
+- `⚠️ Groq failed, trying Gemini...` (fallback)
+
+**Test Groq directly:**
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+## Troubleshooting
+
+**"API key not configured"**
+- Verify `GROQ_API_KEY` is in your `.env` file
+- Restart the ai-diagnosis service
+
+**"Authentication error"**
 - Your API key is invalid
-- Get a new one from https://console.groq.com
+- Get a new one from https://console.groq.com/keys
 
-### Both APIs failing
-- Check your internet connection
-- Verify both API keys are valid
-- Check service status:
-  - Gemini: https://status.cloud.google.com
-  - Groq: https://status.groq.com
+**Service not responding**
+```bash
+docker compose ps              # Check if running
+docker compose logs ai-diagnosis  # Check for errors
+docker compose restart ai-diagnosis  # Restart service
+```
 
-## 💡 Pro Tips:
+## Rate Limits
 
-1. **Keep both APIs configured** for maximum reliability
-2. **Groq is faster** - consider using it as primary
-3. **Monitor logs** to see which API you're using more
-4. **Free tier is generous** - you likely won't need to upgrade
+**Free tier:**
+- 30 requests/minute
+- 14,400 requests/day
+- More than enough for development
 
-## 📈 Upgrade Paths:
+**If you need more:**
+- Groq Pro: 14,400 RPM (~$1/month)
+- Add Gemini fallback (free)
 
-If you do hit limits:
+## Alternative: Gemini
 
-**Groq Pro:**
-- 14,400 RPM (vs 30 free)
-- $0.27/1M tokens
-- ~$1/month for your use case
+Don't want to use Groq? Use Google Gemini instead:
 
-**Gemini Paid:**
-- 360+ RPM
-- $0.00025/1M tokens
-- ~$5/month for your use case
+1. Go to https://ai.google.dev/
+2. Get API key
+3. Add to `.env`: `GEMINI_API_KEY=your_key_here`
+
+The system will automatically use Gemini if Groq isn't configured.
 
 ---
 
-**Questions?** Check the logs or open an issue!
-
+**Need help?** Check `docker compose logs ai-diagnosis` for detailed error messages.
