@@ -2,6 +2,27 @@
 
 A full-stack incident management simulation. Features include AI-powered diagnosis and remediation, failure injection into mock systems, and an autonomous AI SRE Agent that resolves issues.
 
+## 💡 How it started
+
+Like most good projects, this one also started off with a big whiteboard and way too many arrows. Version 1 was a basic simulator with just AI-generated incidents and solutions. Version 2 took it further with mock systems running in containers, real failure injection, and an SRE Agent that actually attempts to fix things.
+
+The final result turned out a bit from the initial sketches - but who doesn't love a nice whiteboard diagram :)
+
+
+<div align="center">
+  <div style="display: inline-block; margin: 10px;">
+    <img src="docs/images/v1.jpg" alt="Version 1 brainstorming" width="400"/>
+    <p><strong>Version 1</strong></p>
+  </div>
+  <div style="display: inline-block; margin: 10px;">
+    <img src="docs/images/v2.jpg" alt="Version 2 planning" width="400"/>
+    <p><strong>Version 2</strong></p>
+  </div>
+  <p><em>Early brainstorming & plans</em></p>
+</div>
+
+---
+
 ## Quick Start
 
 ### Prerequisites
