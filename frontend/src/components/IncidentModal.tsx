@@ -537,17 +537,20 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                   <textarea
                     value={notes}
                     onChange={handleNotesChange}
-                    placeholder="Add notes about this incident..."
+                    placeholder={isResolved ? "Incident resolved - notes are read-only" : "Add notes about this incident..."}
+                    disabled={isResolved}
                     className="w-full bg-transparent resize-none text-sm text-primary placeholder-tertiary focus:outline-none mb-3 flex-1"
                     style={{
                       scrollbarWidth: 'thin',
-                      scrollbarColor: 'rgb(var(--border-color)) transparent'
+                      scrollbarColor: 'rgb(var(--border-color)) transparent',
+                      cursor: isResolved ? 'not-allowed' : 'text',
+                      opacity: isResolved ? 0.6 : 1
                     }}
                   />
                   <div className="flex items-center justify-between">
                     <button
                       onClick={handleSaveNotes}
-                      disabled={!hasUnsavedNotes || isSavingNotes || notes.trim() === ''}
+                      disabled={isResolved || !hasUnsavedNotes || isSavingNotes || notes.trim() === ''}
                       className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       style={{
                         backgroundColor: hasUnsavedNotes && notes.trim() !== '' ? 'rgb(249, 115, 22)' : `rgb(var(--bg-secondary))`,
