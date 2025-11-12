@@ -8,6 +8,7 @@ import { ResolvedIncidentsPanel } from './components/ResolvedIncidentsPanel';
 import { LoginScreen } from './components/LoginScreen';
 import { CreateIncidentModal, NewIncidentData } from './components/CreateIncidentModal';
 import { ActiveUsers } from './components/ActiveUsers';
+import { InfoTooltip } from './components/InfoTooltip';
 import * as api from './services/api';
 import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
 import { useTheme } from './contexts/ThemeContext';
@@ -2046,7 +2047,10 @@ function App() {
                 {/* Metrics in a compact 2x2 grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-secondary mb-1">Memory Usage</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Memory Usage</span>
+                      <InfoTooltip text="Current memory used vs max memory limit. Health = 100 - memory%" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {(systemsHealth['redis-test'].memory_used / 1024 / 1024).toFixed(1)} MB
                     </div>
@@ -2055,7 +2059,10 @@ function App() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">Memory Utilization</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Memory Utilization</span>
+                      <InfoTooltip text="Percentage of max memory used. High utilization triggers OOM errors" />
+                    </div>
                     <div className="text-base font-semibold text-primary mb-1">
                       {systemsHealth['redis-test'].memory_percent.toFixed(1)}%
                     </div>
@@ -2167,7 +2174,10 @@ function App() {
                 {/* Metrics in a compact 1x2 grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-secondary mb-1">Connection Pool</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Connection Pool</span>
+                      <InfoTooltip text="Active vs idle connections. Health = 100 - idle%. High idle % wastes resources" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['postgres-test'].total_connections}/{systemsHealth['postgres-test'].max_connections}
                     </div>
@@ -2176,7 +2186,10 @@ function App() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">Table Bloat</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Table Bloat</span>
+                      <InfoTooltip text="Dead tuples / live tuples × 100. Can exceed 100%. Health = 100 / (1 + ratio/100)" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['postgres-bloat']?.dead_ratio?.toFixed(1) ?? 0}%
                     </div>
@@ -2272,7 +2285,10 @@ function App() {
                 {/* Metrics in a compact 2x2 grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-secondary mb-1">Disk Usage</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Disk Usage</span>
+                      <InfoTooltip text="Percentage of total disk space used. Health = 100 - usage%" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['disk-space'].used_percent.toFixed(1)}%
                     </div>
@@ -2281,7 +2297,10 @@ function App() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">Free Space</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Free Space</span>
+                      <InfoTooltip text="Remaining disk space. Low free space can cause write failures" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['disk-space'].free_mb.toFixed(0)} MB
                     </div>

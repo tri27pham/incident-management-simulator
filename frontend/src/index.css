@@ -371,3 +371,58 @@ div.modal-scroll-pane::-webkit-scrollbar-thumb:hover {
     -webkit-backdrop-filter: blur(4px);
   }
 }
+
+/* Custom tooltip styles */
+.info-icon-tooltip {
+  position: relative;
+}
+
+.info-icon-tooltip::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgb(17, 24, 39);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  width: 200px;
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1000;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.info-icon-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgb(17, 24, 39);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1000;
+}
+
+.info-icon-tooltip:hover::before,
+.info-icon-tooltip:hover::after {
+  opacity: 1;
+}
+
+[data-theme="dark"] .info-icon-tooltip::before {
+  background-color: rgb(243, 244, 246);
+  color: rgb(17, 24, 39);
+}
+
+[data-theme="dark"] .info-icon-tooltip::after {
+  border-top-color: rgb(243, 244, 246);
+}
