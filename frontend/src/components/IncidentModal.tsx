@@ -94,6 +94,9 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
   const [isSolutionExpanded, setIsSolutionExpanded] = useState(false);
   const [showResolveConfirmation, setShowResolveConfirmation] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [executionHasStarted, setExecutionHasStarted] = useState(false);
+  const [pendingToast, setPendingToast] = useState(false);
+  const [hasShownToast, setHasShownToast] = useState(false);
 
   // Check if incident is resolved - use useMemo to recalculate when incident changes
   const isResolved = useMemo(() => {
@@ -113,11 +116,33 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
 
   // Close dropdowns when incident becomes resolved
   useEffect(() => {
-    if (isResolved) {
+    if (isResolved && !hasShownToast) {
       setShowStatusDropdown(false);
       setShowSeverityDropdown(false);
+      
+      // If incident resolved but execution hasn't started yet, queue the toast
+      if (!executionHasStarted) {
+        setPendingToast(true);
+      } else {
+        // Execution already started, safe to show toast
+        if (onShowSuccessToast) {
+          onShowSuccessToast('Incident resolved');
+          setHasShownToast(true);
+        }
+      }
     }
-  }, [isResolved]);
+  }, [isResolved, executionHasStarted, hasShownToast, onShowSuccessToast]);
+  
+  // Show pending toast when execution starts
+  useEffect(() => {
+    if (pendingToast && executionHasStarted && !hasShownToast) {
+      if (onShowSuccessToast) {
+        onShowSuccessToast('Incident resolved');
+        setHasShownToast(true);
+      }
+      setPendingToast(false);
+    }
+  }, [pendingToast, executionHasStarted, hasShownToast, onShowSuccessToast]);
 
   // Get available status options (exclude current status, add Resolved for Fixing)
   const getAvailableStatuses = () => {
@@ -236,7 +261,10 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
     setShowResolveConfirmation(false);
     if (onStatusUpdate && pendingStatus) {
       onStatusUpdate(incident.id, pendingStatus);
-      if (onShowSuccessToast) {
+      if (onShowSuccessToast && pendingStatus === 'Resolved') {
+        onShowSuccessToast('Incident resolved');
+        setHasShownToast(true); // Mark toast as shown to prevent duplicate
+      } else if (onShowSuccessToast) {
         onShowSuccessToast('Status updated');
       }
     }
@@ -751,6 +779,7 @@ export function IncidentModal({ incident, onClose, onSolutionUpdate, onStatusUpd
                     incidentId={incident.id} 
                     canAgentAct={incident.actionable === true && incident.incidentType === 'real_system'}
                     isResolved={isResolved}
+                    onExecutionStarted={() => setExecutionHasStarted(true)}
                   />
                 </div>
               )}

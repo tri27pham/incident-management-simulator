@@ -1140,9 +1140,8 @@ function App() {
             // For immediate UI update, add to resolved list
             setResolvedIncidents((prev) => [incident, ...prev]);
             
-            // Show success toast but DON'T close modal (let user review the resolution)
+            // Don't show toast here - handled by IncidentModal
             if (modalIncident?.id === id) {
-              showSuccessToast('Incident resolved');
               console.log('✅ Incident manually resolved - modal remains open for user review');
             }
           }
@@ -1273,10 +1272,9 @@ function App() {
           
           // If incident is resolved, move it to resolved list
           if (isResolved) {
-            // Update modal if it's open for this incident AND show success toast
+            // Update modal if it's open for this incident (toast handled by IncidentModal)
             if (modalIncidentRef.current?.id === incident.id) {
               setModalIncident(incident);
-              showSuccessToast('Incident resolved');
               console.log('✅ Incident resolved - modal updated and remains open for user review');
             }
             console.log(`🎉 Incident ${incident.incidentNumber} resolved - moving to resolved panel`);
