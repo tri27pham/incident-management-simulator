@@ -185,20 +185,13 @@ def check_postgres_health():
         conn.close()
         
         # Calculate health based on idle connection ratio
-        # If we have many idle connections (>80% of total), it's unhealthy
+        # Health degrades as the percentage of idle connections increases
         idle_ratio = (idle_connections / max(total_connections, 1)) * 100
         
-        # Health degrades as idle connections pile up
-        if idle_connections > 15:  # Critical
-            health = 0
-        elif idle_connections > 12:  # Very bad
-            health = 30
-        elif idle_connections > 10:  # Bad
-            health = 50
-        elif idle_connections > 8:  # Degraded
-            health = 70
-        else:
-            health = 100
+        # Health = 100 - idle_ratio (rounded to 1 decimal place)
+        # Example: 70.6% idle connections = 29.4% health
+        # More idle connections = worse health (they're wasting resources)
+        health = max(0, round(100 - idle_ratio, 1))
         
         metrics = {
             "idle_connections": idle_connections,
@@ -290,18 +283,14 @@ def check_postgres_bloat():
             schema, table_name, dead_tup, live_tup, dead_ratio, last_vacuum, last_autovacuum = row
             
             # Calculate health based on dead tuple ratio
-            # 0-20% dead = 100% health (excellent)
-            # 20-40% dead = 70% health (ok)
-            # 40-60% dead = 40% health (degraded)
-            # 60%+ dead = 0% health (critical)
-            if dead_ratio < 20:
-                health = 100
-            elif dead_ratio < 40:
-                health = 70
-            elif dead_ratio < 60:
-                health = 40
-            else:
-                health = 0
+            # The dead_ratio can exceed 100% (e.g., 400% means 4x more dead than live)
+            # Health degrades as dead_ratio increases, capped at 0%
+            # 0% dead = 100% health
+            # 100% dead = 50% health (equal dead and live)
+            # 200% dead = 33% health (2x more dead than live)
+            # 400% dead = 20% health (4x more dead than live)
+            # Formula: health = 100 / (1 + dead_ratio/100)
+            health = max(0, round(100 / (1 + dead_ratio / 100), 1))
             
             metrics = {
                 "table_name": table_name,
@@ -374,19 +363,10 @@ def check_disk_health():
         free = usage.free
         used_percent = (used / total) * 100
         
-        # Calculate health based on disk usage (inverse of usage)
-        # 0-60% usage = 100% health
-        # 60-70% usage = 70% health
-        # 70-80% usage = 40% health
-        # 80-100% usage = 0% health
-        if used_percent < 60:
-            health = 100
-        elif used_percent < 70:
-            health = 70
-        elif used_percent < 80:
-            health = 40
-        else:
-            health = 0
+        # Calculate health as inverse of disk usage (rounded to 1 decimal place)
+        # Health = 100 - used_percent
+        # Example: 74.7% disk usage = 25.3% health
+        health = max(0, round(100 - used_percent, 1))
         
         metrics = {
             "total_bytes": total,
@@ -534,19 +514,11 @@ def status():
         cursor.close()
         conn.close()
         
-        # Calculate health
-        if idle_connections > 15:
-            health = 0
-        elif idle_connections > 12:
-            health = 30
-        elif idle_connections > 10:
-            health = 50
-        elif idle_connections > 8:
-            health = 70
-        else:
-            health = 100
-        
+        # Calculate health based on idle connection ratio
         idle_ratio = round((idle_connections / max(total_connections, 1)) * 100, 2)
+        
+        # Health = 100 - idle_ratio (rounded to 1 decimal place)
+        health = max(0, round(100 - idle_ratio, 1))
         
         services["postgres-test"] = {
             "health": health,
@@ -591,14 +563,9 @@ def status():
         
         if stats:
             live_tup, dead_tup, dead_ratio = stats
-            if dead_ratio < 20:
-                bloat_health = 100
-            elif dead_ratio < 40:
-                bloat_health = 70
-            elif dead_ratio < 60:
-                bloat_health = 40
-            else:
-                bloat_health = 0
+            # Calculate health using same formula as check_postgres_bloat
+            # health = 100 / (1 + dead_ratio/100)
+            bloat_health = max(0, round(100 / (1 + dead_ratio / 100), 1))
         
         services["postgres-bloat"] = {
             "health": bloat_health,
@@ -620,14 +587,8 @@ def status():
         used_percent = (used / total) * 100
         
         # Calculate health (same as check_disk_health)
-        if used_percent < 60:
-            disk_health = 100
-        elif used_percent < 70:
-            disk_health = 70
-        elif used_percent < 80:
-            disk_health = 40
-        else:
-            disk_health = 0
+        # Health = 100 - used_percent (rounded to 1 decimal place)
+        disk_health = max(0, round(100 - used_percent, 1))
         
         services["disk-space"] = {
             "health": disk_health,
@@ -1062,14 +1023,8 @@ def trigger_disk_full():
         used_percent = (usage.used / usage.total) * 100
         
         # Calculate health for response
-        if used_percent < 60:
-            health = 100
-        elif used_percent < 70:
-            health = 70
-        elif used_percent < 80:
-            health = 40
-        else:
-            health = 0
+        # Health = 100 - used_percent (rounded to 1 decimal place)
+        health = max(0, round(100 - used_percent, 1))
         
         print(f"✅ Disk fill complete (Usage: {used_percent:.1f}%, Health: {health}%)")
         

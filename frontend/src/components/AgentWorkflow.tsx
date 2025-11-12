@@ -6,15 +6,97 @@ interface AgentWorkflowProps {
   incidentId: string;
   canAgentAct: boolean;
   isResolved?: boolean;
+  onExecutionStarted?: () => void;
 }
 
-const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, isResolved = false }) => {
+// Helper function to format AI text into readable paragraphs and bullet points
+function formatAIText(text: string): JSX.Element[] {
+  if (!text) return [];
+  
+  // Split by sentences, looking for common patterns
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .filter(s => s.trim().length > 0);
+  
+  const elements: JSX.Element[] = [];
+  let currentParagraph: string[] = [];
+  let bulletPoints: string[] = [];
+  
+  sentences.forEach((sentence, idx) => {
+    const trimmed = sentence.trim();
+    
+    // Detect bullet-like patterns (starts with number, dash, or bullet keywords)
+    const isBullet = /^(\d+[\.)]\s|[-•*]\s|(?:First|Second|Third|Additionally|Also|Furthermore|Moreover|Finally)[,:]\s)/i.test(trimmed);
+    
+    if (isBullet) {
+      // Flush current paragraph before starting bullets
+      if (currentParagraph.length > 0) {
+        elements.push(
+          <p key={`p-${elements.length}`} className="mb-3">
+            {currentParagraph.join(' ')}
+          </p>
+        );
+        currentParagraph = [];
+      }
+      
+      // Clean up the bullet text
+      const bulletText = trimmed.replace(/^(\d+[\.)]\s|[-•*]\s)/, '');
+      bulletPoints.push(bulletText);
+    } else {
+      // Flush bullets before starting new paragraph
+      if (bulletPoints.length > 0) {
+        elements.push(
+          <ul key={`ul-${elements.length}`} className="list-disc list-inside space-y-1 mb-3 ml-2">
+            {bulletPoints.map((bullet, i) => (
+              <li key={i} className="text-sm">{bullet}</li>
+            ))}
+          </ul>
+        );
+        bulletPoints = [];
+      }
+      
+      currentParagraph.push(trimmed);
+      
+      // Create paragraph every 2-3 sentences for better readability
+      if (currentParagraph.length >= 3 || idx === sentences.length - 1) {
+        elements.push(
+          <p key={`p-${elements.length}`} className="mb-3">
+            {currentParagraph.join(' ')}
+          </p>
+        );
+        currentParagraph = [];
+      }
+    }
+  });
+  
+  // Flush any remaining content
+  if (currentParagraph.length > 0) {
+    elements.push(
+      <p key={`p-${elements.length}`} className="mb-3">
+        {currentParagraph.join(' ')}
+      </p>
+    );
+  }
+  if (bulletPoints.length > 0) {
+    elements.push(
+      <ul key={`ul-${elements.length}`} className="list-disc list-inside space-y-1 mb-3 ml-2">
+        {bulletPoints.map((bullet, i) => (
+          <li key={i} className="text-sm">{bullet}</li>
+        ))}
+      </ul>
+    );
+  }
+  
+  return elements;
+}
+
+const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, isResolved = false, onExecutionStarted }) => {
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pollingExecution, setPollingExecution] = useState<string | null>(null);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [expandedCancelledIds, setExpandedCancelledIds] = useState<Set<string>>(new Set());
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   // Fetch existing executions on mount
   useEffect(() => {
@@ -34,6 +116,15 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
           prev.map(ex => ex.id === execution.id ? mapExecution(execution) : ex)
         );
 
+        // Clear approving state if status changed from awaiting_approval
+        if (execution.status !== 'awaiting_approval' && approvingId === execution.id) {
+          setApprovingId(null);
+          // Trigger callback when execution actually starts (loading cleared)
+          if (onExecutionStarted) {
+            onExecutionStarted();
+          }
+        }
+
         // Stop polling if completed or failed
         if (execution.status === 'completed' || execution.status === 'failed') {
           setPollingExecution(null);
@@ -44,7 +135,7 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [pollingExecution]);
+  }, [pollingExecution, approvingId]);
 
   const fetchExecutions = async () => {
     try {
@@ -110,23 +201,20 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
       const mapped = mapExecution(execution);
       setExecutions(prev => prev.map(ex => ex.id === executionId ? mapped : ex));
       setPollingExecution(executionId); // Resume polling
+      // Don't clear approvingId here - let polling handle it when status changes
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setApprovingId(null);
     }
   };
 
   const handleReject = async (executionId: string) => {
-    setApprovingId(executionId);
     try {
       const execution = await rejectAgentExecution(executionId);
       const mapped = mapExecution(execution);
       setExecutions(prev => prev.map(ex => ex.id === executionId ? mapped : ex));
     } catch (err: any) {
       setError(err.message);
-    } finally {
-      setApprovingId(null);
     }
   };
 
@@ -391,19 +479,20 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
             )}
             
             {execution.analysis && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'rgb(var(--text-primary))' }}>
                   <span>🧠</span>
                   <span>Analysis</span>
                 </div>
                 <div 
-                  className="p-3 rounded text-sm"
+                  className="p-4 rounded text-sm leading-relaxed"
                   style={{ 
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    color: 'rgb(var(--text-secondary))'
+                    color: 'rgb(var(--text-secondary))',
+                    lineHeight: '1.6'
                   }}
                 >
-                  {execution.analysis}
+                  {formatAIText(execution.analysis)}
                 </div>
                 {execution.recommended_action && (
                   <div className="text-sm">
@@ -420,9 +509,20 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
                   </div>
                 )}
                 {execution.reasoning && (
-                  <div className="text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
-                    <span style={{ color: 'rgb(var(--text-tertiary))' }}>Reasoning: </span>
-                    {execution.reasoning}
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium" style={{ color: 'rgb(var(--text-tertiary))' }}>
+                      Reasoning:
+                    </div>
+                    <div 
+                      className="text-sm p-3 rounded leading-relaxed"
+                      style={{ 
+                        color: 'rgb(var(--text-secondary))',
+                        backgroundColor: 'rgba(var(--border-color-rgb), 0.1)',
+                        lineHeight: '1.6'
+                      }}
+                    >
+                      {formatAIText(execution.reasoning)}
+                    </div>
                   </div>
                 )}
               </div>
@@ -531,49 +631,65 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
               >
                 {execution.status === 'awaiting_approval' ? (
                   <>
-                    <div className="flex items-start gap-2 mb-3">
-                      <svg className="w-5 h-5 shrink-0" style={{ color: 'rgb(249, 115, 22)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <div>
-                        <div className="font-semibold mb-1 text-sm" style={{ color: 'rgb(249, 115, 22)' }}>
-                          Approval Required
-                        </div>
-                        <p className="text-xs" style={{ color: 'rgb(var(--text-secondary))' }}>
-                          Review the commands and risks above before proceeding.
-                        </p>
+                    {approvingId === execution.id ? (
+                      <div className="flex items-center justify-center gap-3 py-3">
+                        <svg className="animate-spin h-5 w-5" style={{ color: 'rgb(34, 197, 94)' }} fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span className="text-sm font-medium" style={{ color: 'rgb(34, 197, 94)' }}>
+                          Starting execution...
+                        </span>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleApprove(execution.id)}
-                        disabled={approvingId === execution.id}
-                        className="flex-1 py-1.5 px-3 rounded-lg font-medium text-sm"
-                        style={{
-                          backgroundColor: approvingId === execution.id ? 'rgb(107, 114, 128)' : 'rgb(34, 197, 94)',
-                          color: 'white',
-                          opacity: approvingId === execution.id ? 0.6 : 1,
-                          cursor: approvingId === execution.id ? 'not-allowed' : 'pointer',
-                          transform: approvingId === execution.id ? 'scale(0.95)' : 'scale(1)',
-                          transition: 'all 0.15s ease-in-out',
-                        }}
-                      >
-                        {approvingId === execution.id ? 'Approving...' : '✓ Approve & Execute'}
-                      </button>
-                      <button
-                        onClick={() => handleReject(execution.id)}
-                        disabled={approvingId === execution.id}
-                        className="flex-1 py-1.5 px-3 rounded-lg font-medium transition-all text-sm"
-                        style={{
-                          backgroundColor: approvingId === execution.id ? 'rgb(107, 114, 128)' : 'rgb(239, 68, 68)',
-                          color: 'white',
-                          opacity: approvingId === execution.id ? 0.6 : 1,
-                          cursor: approvingId === execution.id ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        {approvingId === execution.id ? 'Rejecting...' : '✗ Reject'}
-                      </button>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start gap-2 mb-3">
+                          <svg className="w-5 h-5 shrink-0" style={{ color: 'rgb(249, 115, 22)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <div>
+                            <div className="font-semibold mb-1 text-sm" style={{ color: 'rgb(249, 115, 22)' }}>
+                              Approval Required
+                            </div>
+                            <p className="text-xs" style={{ color: 'rgb(var(--text-secondary))' }}>
+                              Review the commands and risks above before proceeding.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleApprove(execution.id);
+                            }}
+                            className="flex-1 py-1.5 px-3 rounded-lg font-medium text-sm transition-all"
+                            style={{
+                              backgroundColor: 'rgb(34, 197, 94)',
+                              color: 'white',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            ✓ Approve & Execute
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleReject(execution.id);
+                            }}
+                            className="flex-1 py-1.5 px-3 rounded-lg font-medium transition-all text-sm"
+                            style={{
+                              backgroundColor: 'rgb(239, 68, 68)',
+                              color: 'white',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            ✗ Reject
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </>
                 ) : (
                   <div className="flex items-center justify-center gap-2 py-1">

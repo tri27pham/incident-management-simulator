@@ -8,6 +8,7 @@ import { ResolvedIncidentsPanel } from './components/ResolvedIncidentsPanel';
 import { LoginScreen } from './components/LoginScreen';
 import { CreateIncidentModal, NewIncidentData } from './components/CreateIncidentModal';
 import { ActiveUsers } from './components/ActiveUsers';
+import { InfoTooltip } from './components/InfoTooltip';
 import * as api from './services/api';
 import { mapBackendIncidentToFrontend, mapBackendStatusToFrontend, mapFrontendStatusToBackend } from './services/incidentMapper';
 import { useTheme } from './contexts/ThemeContext';
@@ -1139,9 +1140,8 @@ function App() {
             // For immediate UI update, add to resolved list
             setResolvedIncidents((prev) => [incident, ...prev]);
             
-            // Show success toast but DON'T close modal (let user review the resolution)
+            // Don't show toast here - handled by IncidentModal
             if (modalIncident?.id === id) {
-              showSuccessToast('Incident resolved');
               console.log('✅ Incident manually resolved - modal remains open for user review');
             }
           }
@@ -1272,10 +1272,9 @@ function App() {
           
           // If incident is resolved, move it to resolved list
           if (isResolved) {
-            // Update modal if it's open for this incident AND show success toast
+            // Update modal if it's open for this incident (toast handled by IncidentModal)
             if (modalIncidentRef.current?.id === incident.id) {
               setModalIncident(incident);
-              showSuccessToast('Incident resolved');
               console.log('✅ Incident resolved - modal updated and remains open for user review');
             }
             console.log(`🎉 Incident ${incident.incidentNumber} resolved - moving to resolved panel`);
@@ -2046,7 +2045,10 @@ function App() {
                 {/* Metrics in a compact 2x2 grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-secondary mb-1">Memory Usage</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Memory Usage</span>
+                      <InfoTooltip text="Current memory used vs max memory limit. Health = 100 - memory%" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {(systemsHealth['redis-test'].memory_used / 1024 / 1024).toFixed(1)} MB
                     </div>
@@ -2055,7 +2057,10 @@ function App() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">Memory Utilization</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Memory Utilization</span>
+                      <InfoTooltip text="Percentage of max memory used. High utilization triggers OOM errors" />
+                    </div>
                     <div className="text-base font-semibold text-primary mb-1">
                       {systemsHealth['redis-test'].memory_percent.toFixed(1)}%
                     </div>
@@ -2167,7 +2172,10 @@ function App() {
                 {/* Metrics in a compact 1x2 grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-secondary mb-1">Connection Pool</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Connection Pool</span>
+                      <InfoTooltip text="Active vs idle connections. Health = 100 - idle%. High idle % wastes resources" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['postgres-test'].total_connections}/{systemsHealth['postgres-test'].max_connections}
                     </div>
@@ -2176,7 +2184,10 @@ function App() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">Table Bloat</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Table Bloat</span>
+                      <InfoTooltip text="Dead tuples / live tuples × 100. Can exceed 100%. Health = 100 / (1 + ratio/100)" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['postgres-bloat']?.dead_ratio?.toFixed(1) ?? 0}%
                     </div>
@@ -2272,7 +2283,10 @@ function App() {
                 {/* Metrics in a compact 2x2 grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-secondary mb-1">Disk Usage</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Disk Usage</span>
+                      <InfoTooltip text="Percentage of total disk space used. Health = 100 - usage%" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['disk-space'].used_percent.toFixed(1)}%
                     </div>
@@ -2281,7 +2295,10 @@ function App() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">Free Space</div>
+                    <div className="flex items-center gap-1 text-xs text-secondary mb-1">
+                      <span>Free Space</span>
+                      <InfoTooltip text="Remaining disk space. Low free space can cause write failures" />
+                    </div>
                     <div className="text-base font-semibold text-primary">
                       {systemsHealth['disk-space'].free_mb.toFixed(0)} MB
                     </div>
@@ -2562,6 +2579,27 @@ function App() {
                   This is an <span className="font-semibold text-primary">Incident Management Simulator</span> designed to demonstrate incident response workflows. 
                   It simulates real-world system failures and provides an AI-powered SRE agent that can automatically diagnose and remediate issues.
                 </p>
+                <a
+                  href="https://github.com/tri27pham/incident-management-simulator"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 mt-4 px-4 py-2 rounded-lg transition-all duration-200 font-medium text-sm w-fit"
+                  style={{
+                    backgroundColor: 'rgb(249, 115, 22)',
+                    color: 'white'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgb(234, 88, 12)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgb(249, 115, 22)';
+                  }}
+                >
+                  <svg className="w-5 h-5" fill="white" viewBox="0 0 24 24">
+                    <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+                  </svg>
+                  View Source Code on GitHub
+                </a>
               </section>
 
               {/* Key Features */}
