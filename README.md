@@ -84,8 +84,8 @@ cp .env.example .env
 # 2. Deploy (automatically configures for remote access)
 ./scripts/deploy-vm-standalone.sh
 
-# 3. Access at http://YOUR_VM_IP:3000
-# Works from any device - frontend auto-configured with VM's public IP
+# 3. Access at https://YOUR_DOMAIN (e.g., https://incidentsimulator.net)
+# Works from any device - frontend auto-configured for remote access
 ```
 
 **Note:** 
@@ -243,7 +243,7 @@ docker compose down -v
 **Remote access not working:**
 - Check firewall rules: `gcloud compute firewall-rules list`
 - Verify containers are running: `./scripts/check-vm-status.sh`
-- Test backend API: `curl http://YOUR_VM_IP:8080/api/v1/health`
+- Test backend API: `curl https://YOUR_DOMAIN/api/v1/health`
 
 ---
 
