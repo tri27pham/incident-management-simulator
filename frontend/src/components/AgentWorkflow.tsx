@@ -8,6 +8,87 @@ interface AgentWorkflowProps {
   isResolved?: boolean;
 }
 
+// Helper function to format AI text into readable paragraphs and bullet points
+function formatAIText(text: string): JSX.Element[] {
+  if (!text) return [];
+  
+  // Split by sentences, looking for common patterns
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .filter(s => s.trim().length > 0);
+  
+  const elements: JSX.Element[] = [];
+  let currentParagraph: string[] = [];
+  let bulletPoints: string[] = [];
+  
+  sentences.forEach((sentence, idx) => {
+    const trimmed = sentence.trim();
+    
+    // Detect bullet-like patterns (starts with number, dash, or bullet keywords)
+    const isBullet = /^(\d+[\.)]\s|[-•*]\s|(?:First|Second|Third|Additionally|Also|Furthermore|Moreover|Finally)[,:]\s)/i.test(trimmed);
+    
+    if (isBullet) {
+      // Flush current paragraph before starting bullets
+      if (currentParagraph.length > 0) {
+        elements.push(
+          <p key={`p-${elements.length}`} className="mb-3">
+            {currentParagraph.join(' ')}
+          </p>
+        );
+        currentParagraph = [];
+      }
+      
+      // Clean up the bullet text
+      const bulletText = trimmed.replace(/^(\d+[\.)]\s|[-•*]\s)/, '');
+      bulletPoints.push(bulletText);
+    } else {
+      // Flush bullets before starting new paragraph
+      if (bulletPoints.length > 0) {
+        elements.push(
+          <ul key={`ul-${elements.length}`} className="list-disc list-inside space-y-1 mb-3 ml-2">
+            {bulletPoints.map((bullet, i) => (
+              <li key={i} className="text-sm">{bullet}</li>
+            ))}
+          </ul>
+        );
+        bulletPoints = [];
+      }
+      
+      currentParagraph.push(trimmed);
+      
+      // Create paragraph every 2-3 sentences for better readability
+      if (currentParagraph.length >= 3 || idx === sentences.length - 1) {
+        elements.push(
+          <p key={`p-${elements.length}`} className="mb-3">
+            {currentParagraph.join(' ')}
+          </p>
+        );
+        currentParagraph = [];
+      }
+    }
+  });
+  
+  // Flush any remaining content
+  if (currentParagraph.length > 0) {
+    elements.push(
+      <p key={`p-${elements.length}`} className="mb-3">
+        {currentParagraph.join(' ')}
+      </p>
+    );
+  }
+  if (bulletPoints.length > 0) {
+    elements.push(
+      <ul key={`ul-${elements.length}`} className="list-disc list-inside space-y-1 mb-3 ml-2">
+        {bulletPoints.map((bullet, i) => (
+          <li key={i} className="text-sm">{bullet}</li>
+        ))}
+      </ul>
+    );
+  }
+  
+  return elements;
+}
+
 const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, isResolved = false }) => {
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [loading, setLoading] = useState(false);
@@ -391,19 +472,20 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
             )}
             
             {execution.analysis && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'rgb(var(--text-primary))' }}>
                   <span>🧠</span>
                   <span>Analysis</span>
                 </div>
                 <div 
-                  className="p-3 rounded text-sm"
+                  className="p-4 rounded text-sm leading-relaxed"
                   style={{ 
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    color: 'rgb(var(--text-secondary))'
+                    color: 'rgb(var(--text-secondary))',
+                    lineHeight: '1.6'
                   }}
                 >
-                  {execution.analysis}
+                  {formatAIText(execution.analysis)}
                 </div>
                 {execution.recommended_action && (
                   <div className="text-sm">
@@ -420,9 +502,20 @@ const AgentWorkflow: React.FC<AgentWorkflowProps> = ({ incidentId, canAgentAct, 
                   </div>
                 )}
                 {execution.reasoning && (
-                  <div className="text-sm" style={{ color: 'rgb(var(--text-secondary))' }}>
-                    <span style={{ color: 'rgb(var(--text-tertiary))' }}>Reasoning: </span>
-                    {execution.reasoning}
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium" style={{ color: 'rgb(var(--text-tertiary))' }}>
+                      Reasoning:
+                    </div>
+                    <div 
+                      className="text-sm p-3 rounded leading-relaxed"
+                      style={{ 
+                        color: 'rgb(var(--text-secondary))',
+                        backgroundColor: 'rgba(var(--border-color-rgb), 0.1)',
+                        lineHeight: '1.6'
+                      }}
+                    >
+                      {formatAIText(execution.reasoning)}
+                    </div>
                   </div>
                 )}
               </div>
