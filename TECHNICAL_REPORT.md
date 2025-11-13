@@ -1823,8 +1823,7 @@ The design prioritizes **simplicity, performance, and maintainability** while pr
 
 **For more information:**
 - GitHub: https://github.com/tri27pham/incident-management-simulator
-- Live Demo: https://incidentsimulator.net
-- Password: `incident.io`
+
 
 *This document is current as of November 12, 2025.*
 
