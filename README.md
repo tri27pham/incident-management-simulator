@@ -102,7 +102,7 @@ cp .env.example .env
 - Firewall automatically configured for ports 3000, 8080, 8002
 - No manual configuration needed for remote access
 
-**[Full Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md)**
+**Deployment is automated** - The script handles VM creation, Docker setup, SSL certificates, firewall configuration, and secret management.
 
 ---
 
@@ -256,8 +256,7 @@ docker compose down -v
 
 ## Documentation
 
-- [GCP Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md) - Deploy to Google Cloud
-- [Groq Setup Guide](./docs/GROQ_SETUP.md) - Get free AI API key
+- [Technical Report](./TECHNICAL_REPORT.md) - Complete architecture documentation (1831 lines)
 
 ---
 
